@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getProducts, getShops, saveBuild } from "@/lib/data";
+import { getProducts, getShops, getBuild, saveBuild, updateBuild } from "@/lib/data";
 import { BUILD_SLOTS, CAT_LABEL, fmt, lowest } from "@/lib/catalog";
 import { checkCompatibility } from "@/lib/compat";
 import { downloadBuildPDF } from "@/lib/pdf";
@@ -12,6 +12,10 @@ import CategoryIcon from "@/components/CategoryIcon";
 function BuilderInner() {
   const params = useSearchParams();
   const { user } = useAuth();
+  const buildId = params.get("buildId");
+  const slotParam = params.get("slot");
+  const pidParam = params.get("pid");
+
   const [products, setProducts] = useState([]);
   const [shops, setShops] = useState([]);
   const [build, setBuild] = useState({});
@@ -20,20 +24,71 @@ function BuilderInner() {
   const [budget, setBudget] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editingBuildId, setEditingBuildId] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    getProducts().then(setProducts);
-    getShops().then(setShops);
+    let cancelled = false;
+    Promise.all([getProducts(), getShops()]).then(([p, s]) => {
+      if (!cancelled) {
+        setProducts(p);
+        setShops(s);
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
+  // Restore an existing saved build. Product IDs are stored in Firestore,
+  // while the builder needs the full product objects for prices/specs.
   useEffect(() => {
-    const slot = params.get("slot");
-    const pid = params.get("pid");
-    if (slot && pid && products.length) {
-      const p = products.find((x) => x.id === pid);
-      if (p) setBuild((b) => ({ ...b, [slot]: p }));
+    if (!user || !products.length) return;
+
+    let cancelled = false;
+    setLoadError("");
+
+    if (buildId) {
+      getBuild(buildId)
+        .then((savedBuild) => {
+          if (cancelled) return;
+          if (!savedBuild) {
+            setLoadError("This saved build could not be found or you do not have access to it.");
+            return;
+          }
+
+          const restored = {};
+          BUILD_SLOTS.forEach((cat) => {
+            const pid = savedBuild.components?.[cat];
+            if (!pid) return;
+            const product = products.find((p) => p.id === pid);
+            if (product) restored[cat] = product;
+          });
+
+          setBuild(restored);
+          setBuildName(savedBuild.name || "My PC Build");
+          setBudget(savedBuild.budget != null ? String(savedBuild.budget) : "");
+          setEditingBuildId(savedBuild.id);
+          setSaved(false);
+        })
+        .catch((err) => {
+          console.error("Failed to load saved build", err);
+          if (!cancelled) setLoadError("Could not load this saved build. Please try again.");
+        });
+
+      return () => { cancelled = true; };
     }
-  }, [params, products]);
+
+    // Keep the existing "Use in PC Builder" product flow working.
+    if (slotParam && pidParam) {
+      const product = products.find((x) => x.id === pidParam);
+      if (product) {
+        setBuild((current) => ({ ...current, [slotParam]: product }));
+        setSaved(false);
+      }
+    }
+
+    setEditingBuildId(null);
+    return () => { cancelled = true; };
+  }, [user, products, buildId, slotParam, pidParam]);
 
   const issues = useMemo(() => checkCompatibility(build), [build]);
 
@@ -45,7 +100,7 @@ function BuilderInner() {
       label: CAT_LABEL[cat],
       product,
       lowestPrice: low?.price,
-      lowestShop: low ? (shops.find((s) => s.id === low.shop)?.name || low.shop) : null,
+      lowestShop: low ? (shops.find((s) => s.id === low.shop)?.name || low.shopName || low.shop) : null,
     };
   });
 
@@ -72,8 +127,17 @@ function BuilderInner() {
     const picks = [];
     slots.forEach((s) => {
       if (!s.product) return;
-      const cheapest = [...(s.product.offers || [])].filter((o) => o.availability === "in_stock").sort((a, b) => a.price - b.price)[0];
-      if (cheapest) { sum += cheapest.price; picks.push({ slot: s.label, shop: shops.find((x) => x.id === cheapest.shop)?.name || cheapest.shop, price: cheapest.price }); }
+      const cheapest = [...(s.product.offers || [])]
+        .filter((o) => o.availability === "in_stock")
+        .sort((a, b) => a.price - b.price)[0];
+      if (cheapest) {
+        sum += cheapest.price;
+        picks.push({
+          slot: s.label,
+          shop: shops.find((x) => x.id === cheapest.shop)?.name || cheapest.shopName || cheapest.shop,
+          price: cheapest.price,
+        });
+      }
     });
     return { sum, picks };
   }, [slots, shops]);
@@ -83,19 +147,52 @@ function BuilderInner() {
     setPickerSlot(null);
     setSaved(false);
   }
+
   function clearSlot(cat) {
-    setBuild((b) => { const n = { ...b }; delete n[cat]; return n; });
+    setBuild((b) => {
+      const n = { ...b };
+      delete n[cat];
+      return n;
+    });
     setSaved(false);
   }
 
   async function handleSave() {
-    if (!user) return;
+    if (!user || filledCount === 0) return;
     setSaving(true);
-    const components = {};
-    Object.entries(build).forEach(([cat, p]) => { components[cat] = p.id; });
-    await saveBuild(user.uid, { name: buildName, budget: Number(budget) || null, components, total });
-    setSaving(false);
-    setSaved(true);
+    setSaved(false);
+    setLoadError("");
+
+    try {
+      const components = {};
+      Object.entries(build).forEach(([cat, p]) => {
+        if (p?.id) components[cat] = p.id;
+      });
+
+      const payload = {
+        name: buildName.trim() || "My PC Build",
+        budget: Number(budget) || null,
+        components,
+        total,
+      };
+
+      if (editingBuildId) {
+        await updateBuild(editingBuildId, payload);
+      } else {
+        const ref = await saveBuild(user.uid, payload);
+        setEditingBuildId(ref.id);
+        // Keep the URL stable and shareable after creating a new build.
+        window.history.replaceState(null, "", `/builder?buildId=${encodeURIComponent(ref.id)}`);
+      }
+
+      setBuildName(payload.name);
+      setSaved(true);
+    } catch (err) {
+      console.error("Failed to save build", err);
+      setLoadError("Could not save this build. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -103,19 +200,36 @@ function BuilderInner() {
       <h1 className="text-2xl mb-1">PC Builder</h1>
       <p className="text-ink-soft text-[13.5px] mb-6">Pick a component for each slot — TechCompare checks compatibility and finds the cheapest source as you go.</p>
 
+      {editingBuildId && (
+        <div className="mb-5 badge badge-stock !inline-flex !normal-case !text-[12px] py-2 px-3 rounded-md">
+          Editing saved build — changes will update this build.
+        </div>
+      )}
+      {loadError && (
+        <div className="mb-5 badge badge-error !inline-flex !normal-case !text-[12px] py-2 px-3 rounded-md w-full">
+          {loadError}
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-[1fr_340px] gap-8">
         <div>
           <div className="flex gap-3 mb-5 flex-wrap">
-            <input value={buildName} onChange={(e) => setBuildName(e.target.value)} className="border border-line rounded-md px-3 py-2 text-sm flex-1 min-w-[180px]" placeholder="Build name" />
-            <input value={budget} onChange={(e) => setBudget(e.target.value)} type="number" className="border border-line rounded-md px-3 py-2 text-sm w-40" placeholder="Budget (৳)" />
+            <input value={buildName} onChange={(e) => { setBuildName(e.target.value); setSaved(false); }} className="border border-line rounded-md px-3 py-2 text-sm flex-1 min-w-[180px]" placeholder="Build name" />
+            <input value={budget} onChange={(e) => { setBudget(e.target.value); setSaved(false); }} type="number" className="border border-line rounded-md px-3 py-2 text-sm w-40" placeholder="Budget (৳)" />
           </div>
 
           <div className="space-y-2">
             {slots.map((s) => (
               <div key={s.cat} className="card p-3 flex items-center gap-3">
-                <div className="w-11 h-11 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0">
-                  <CategoryIcon cat={s.cat} size={20} />
-                </div>
+                {s.product?.images?.[0] ? (
+                  <div className="w-11 h-11 rounded-lg bg-white border border-line-soft flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src={s.product.images[0]} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  </div>
+                ) : (
+                  <div className="w-11 h-11 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0">
+                    <CategoryIcon cat={s.cat} size={20} />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-semibold text-ink-soft uppercase">{s.label}</div>
                   {s.product ? (
@@ -126,12 +240,11 @@ function BuilderInner() {
                 </div>
                 {s.product && s.lowestPrice != null && <PriceChip price={s.lowestPrice} />}
                 <button onClick={() => setPickerSlot(s.cat)} className="btn btn-ghost btn-sm">{s.product ? "Change" : "Select"}</button>
-                {s.product && <button onClick={() => clearSlot(s.cat)} className="text-ink-soft text-xs px-1">✕</button>}
+                {s.product && <button onClick={() => clearSlot(s.cat)} className="text-ink-soft text-xs px-1" aria-label={`Remove ${s.label}`}>✕</button>}
               </div>
             ))}
           </div>
 
-          {/* Compatibility */}
           {issues.length > 0 && (
             <div className="mt-6">
               <h2 className="text-[15px] mb-2">Compatibility</h2>
@@ -145,7 +258,6 @@ function BuilderInner() {
             </div>
           )}
 
-          {/* Cheapest multi-shop plan */}
           {cheapestPlan.picks.length > 0 && (
             <div className="mt-6">
               <h2 className="text-[15px] mb-2">Cheapest purchase plan (multi-shop)</h2>
@@ -163,7 +275,6 @@ function BuilderInner() {
             </div>
           )}
 
-          {/* Best single shop */}
           {shopTotals.length > 0 && (
             <div className="mt-6">
               <h2 className="text-[15px] mb-2">Buy everything from one shop</h2>
@@ -184,7 +295,6 @@ function BuilderInner() {
           )}
         </div>
 
-        {/* Sticky total sidebar */}
         <div>
           <div className="card p-5 sticky top-20">
             <div className="text-[12px] font-semibold text-ink-soft uppercase mb-1">Estimated total</div>
@@ -194,7 +304,7 @@ function BuilderInner() {
 
             {user ? (
               <button onClick={handleSave} disabled={saving || filledCount === 0} className="btn btn-primary btn-block mb-2">
-                {saved ? "Saved ✓" : saving ? "Saving…" : "Save Build"}
+                {saved ? (editingBuildId ? "Updated ✓" : "Saved ✓") : saving ? (editingBuildId ? "Updating…" : "Saving…") : (editingBuildId ? "Update Build" : "Save Build")}
               </button>
             ) : (
               <div className="text-[12.5px] text-ink-soft mb-2">Log in to save this build.</div>
@@ -210,7 +320,6 @@ function BuilderInner() {
         </div>
       </div>
 
-      {/* Picker modal */}
       {pickerSlot && (
         <Picker cat={pickerSlot} products={products.filter((p) => p.cat === pickerSlot)} onPick={(p) => pick(pickerSlot, p)} onClose={() => setPickerSlot(null)} />
       )}
@@ -236,7 +345,13 @@ function Picker({ cat, products, onPick, onClose }) {
             const low = lowest(p);
             return (
               <button key={p.id} onClick={() => onPick(p)} className="w-full flex items-center gap-3 p-3 hover:bg-pcb-tint text-left border-b border-line-soft last:border-0">
-                <div className="w-10 h-10 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0"><CategoryIcon cat={cat} size={18} /></div>
+                {p.images?.[0] ? (
+                  <div className="w-10 h-10 rounded-lg bg-white border border-line-soft flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src={p.images[0]} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0"><CategoryIcon cat={cat} size={18} /></div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[13.5px] font-semibold truncate">{p.name}</div>
                   <div className="text-[11.5px] text-ink-soft">{p.brand}</div>

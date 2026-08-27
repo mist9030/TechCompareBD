@@ -20,6 +20,9 @@ export default function ProfilePage() {
       setBuilds(b);
       setProducts(p);
       setBusy(false);
+    }).catch((err) => {
+      console.error("Failed to load profile builds", err);
+      setBusy(false);
     });
   }, [user]);
 
@@ -29,8 +32,9 @@ export default function ProfilePage() {
   }
 
   async function rename(id) {
-    await updateBuild(id, { name: editName });
-    setBuilds((prev) => prev.map((b) => (b.id === id ? { ...b, name: editName } : b)));
+    const name = editName.trim() || "My PC Build";
+    await updateBuild(id, { name });
+    setBuilds((prev) => prev.map((b) => (b.id === id ? { ...b, name } : b)));
     setEditingId(null);
   }
 
@@ -39,7 +43,10 @@ export default function ProfilePage() {
       const pid = build.components?.[cat];
       const product = pid ? products.find((p) => p.id === pid) : null;
       const low = product ? lowest(product) : null;
-      return { label: CAT_LABEL[cat], product, lowestPrice: low?.price };
+      const lowestShop = low
+        ? (products.length && product.offers?.find((o) => o.shop === low.shop)?.shopName || low.shopName || low.shop)
+        : null;
+      return { cat, label: CAT_LABEL[cat], product, lowestPrice: low?.price, lowestShop };
     }).filter((s) => s.product);
   }
 
@@ -85,10 +92,11 @@ export default function ProfilePage() {
                 <div className="text-[12.5px] text-ink-soft mb-3">{slots.length} components · {fmt(total)}</div>
                 <ul className="text-[13px] mb-3 space-y-1">
                   {slots.map((s) => (
-                    <li key={s.label} className="flex justify-between"><span className="text-ink-soft">{s.label}</span><span className="font-medium">{s.product.name}</span></li>
+                    <li key={s.label} className="flex justify-between gap-3"><span className="text-ink-soft shrink-0">{s.label}</span><span className="font-medium text-right">{s.product.name}</span></li>
                   ))}
                 </ul>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <Link href={`/builder?buildId=${encodeURIComponent(b.id)}`} className="btn btn-primary btn-sm">Edit Build</Link>
                   <button onClick={() => downloadBuildPDF(b.name, slots, total, b.budget)} className="btn btn-ghost btn-sm">Download PDF</button>
                   <button onClick={() => remove(b.id)} className="btn btn-sm btn-danger">Delete</button>
                 </div>
