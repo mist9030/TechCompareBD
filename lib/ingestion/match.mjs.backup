@@ -1,0 +1,111 @@
+// lib/ingestion/match.mjs
+//
+// Decides whether a normalized, scraped listing is:
+//   - the SAME physical product as an existing canonical Product (auto-match)
+//   - possibly the same product but not confidently (ambiguous -> Match Review)
+//   - a genuinely new product (create)
+//
+// Pure functions over plain objects (existingProducts is a plain array, not
+// a Firestore query) so this is unit-testable with plain `node --test`
+// (see test/match.test.mjs). lib/ingestion/ingest.js is responsible for
+// loading that array from Firestore and acting on the decision.
+
+import { normalizeModelForMatching } from "./normalize.mjs";
+
+const HIGH_NAME_SIMILARITY = 0.82; // auto-match above this
+const LOW_NAME_SIMILARITY = 0.55; // below this, not even a candidate
+
+/**
+ * Token-set (Jaccard) similarity between two product names. Cheap, no
+ * deps, order-independent — good enough to separate "same product,
+ * different retailer title casing/wording" from "different product".
+ */
+export function nameSimilarity(a, b) {
+  const tok = (s) =>
+    new Set(
+      String(s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+    );
+  const ta = tok(a);
+  const tb = tok(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let intersection = 0;
+  for (const t of ta) if (tb.has(t)) intersection++;
+  const union = ta.size + tb.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * @param {object} normalized  Output of an adapter's parseProduct(), after
+ *   normalize.mjs has cleaned it up. Expected fields used here:
+ *   { sourceShopId, sourceProductId, category, brand, name, model, identifiers }
+ * @param {Array<object>} existingProducts  Plain Product docs (with `id`,
+ *   `cat`, `brand`, `name`, `model`, `offers: [{shop, sourceProductId}]`).
+ * @returns {{decision: 'match'|'ambiguous'|'new', productId?: string,
+ *   candidates?: Array<{productId:string, score:number, reason:string}>,
+ *   reason: string}}
+ */
+export function matchCandidate(normalized, existingProducts) {
+  const sameCategory = existingProducts.filter((p) => p.cat === normalized.category);
+
+  // 1. Highest confidence: we've already linked this exact retailer
+  //    SKU/product-id to a canonical product on a previous sync.
+  if (normalized.sourceProductId) {
+    const bySourceId = existingProducts.find((p) =>
+      (p.offers || []).some(
+        (o) => o.shop === normalized.sourceShopId && o.sourceProductId === normalized.sourceProductId
+      )
+    );
+    if (bySourceId) {
+      return { decision: "match", productId: bySourceId.id, reason: "source_id" };
+    }
+  }
+
+  // 2. MPN / model number exact match (normalized), within same category
+  //    and brand — very high confidence, this is basically the same part.
+  const normModel = normalizeModelForMatching(normalized.model || normalized.identifiers?.mpn);
+  if (normModel) {
+    const modelMatches = sameCategory.filter((p) => {
+      if ((p.brand || "").toLowerCase() !== (normalized.brand || "").toLowerCase()) return false;
+      return normalizeModelForMatching(p.model) === normModel;
+    });
+    if (modelMatches.length === 1) {
+      return { decision: "match", productId: modelMatches[0].id, reason: "model_exact" };
+    }
+    if (modelMatches.length > 1) {
+      return {
+        decision: "ambiguous",
+        candidates: modelMatches.map((p) => ({ productId: p.id, score: 1, reason: "model_exact_multi" })),
+        reason: "multiple_products_share_model",
+      };
+    }
+  }
+
+  // 3. Brand + strong name similarity.
+  const brandMatches = sameCategory.filter(
+    (p) => (p.brand || "").toLowerCase() === (normalized.brand || "").toLowerCase()
+  );
+  const scored = brandMatches
+    .map((p) => ({ productId: p.id, score: nameSimilarity(p.name, normalized.name), reason: "name_similarity" }))
+    .filter((c) => c.score >= LOW_NAME_SIMILARITY)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) {
+    return { decision: "new", reason: "no_candidate" };
+  }
+
+  const top = scored[0];
+  const runnerUp = scored[1];
+
+  if (top.score >= HIGH_NAME_SIMILARITY && (!runnerUp || top.score - runnerUp.score > 0.1)) {
+    return { decision: "match", productId: top.productId, reason: "name_similarity_high" };
+  }
+
+  // Confident it's *one of* these, not confident *which one* (or score is
+  // in the ambiguous middle band) -> send to Match Review rather than
+  // guessing and risking a bad merge or a silent duplicate.
+  return { decision: "ambiguous", candidates: scored.slice(0, 5), reason: "name_similarity_ambiguous" };
+}

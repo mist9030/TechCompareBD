@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Public catalog data — anyone can read; only admins can write.
+    // (The admin panel writes directly from the client, so this rule is
+    // what actually enforces the "admin-only" boundary — the UI guard in
+    // app/admin/layout.js alone is not security.)
+    match /products/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /shops/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /scraping_logs/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Real price observations written by the ingestion pipeline
+    // (lib/ingestion/ingest.js). Public read so the product detail page's
+    // chart works for everyone; writes happen almost exclusively via the
+    // Admin SDK (which bypasses rules) — this rule mainly covers direct
+    // Firestore Console edits.
+    match /products/{productId}/priceHistory/{obsId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Ambiguous scraped listings awaiting admin resolution (spec section 7:
+    // "Send ambiguous cases to the existing admin Match Review workflow").
+    // Not public — this can contain not-yet-verified retailer data.
+    match /match_review/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Users can read/update their own profile; role can only be granted by
+    // an admin editing Firestore directly (never trust a client-set role).
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid && request.resource.data.role == 'user';
+      allow update: if isSignedIn() && request.auth.uid == uid && request.resource.data.role == resource.data.role;
+    }
+
+    // Builds and wishlist are private to their owner.
+    match /builds/{id} {
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+    match /wishlist/{id} {
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}

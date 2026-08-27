@@ -1,0 +1,10 @@
+{
+  "_comment": "Example only — rename to vercel.json (or merge into an existing one) to activate. Staggers each retailer so invocations don't overlap. Check Vercel's current Cron Jobs docs for schedule-frequency limits on your plan before relying on this. Vercel Cron sends 'Authorization: Bearer <CRON_SECRET>' automatically when a CRON_SECRET env var is set on the project.",
+  "crons": [
+    { "path": "/api/cron/sync?shopId=startech", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/sync?shopId=ucc", "schedule": "15 */6 * * *" },
+    { "path": "/api/cron/sync?shopId=onix", "schedule": "30 */6 * * *" },
+    { "path": "/api/cron/sync?shopId=creatus", "schedule": "45 */6 * * *" },
+    { "path": "/api/cron/sync?shopId=globalbrand", "schedule": "5 */6 * * *" }
+  ]
+}

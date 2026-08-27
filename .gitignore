@@ -1,0 +1,9 @@
+node_modules
+.next
+.env.local
+out
+firebase/service-account.json
+
+data/*.db
+data/*.db-shm
+data/*.db-wal
