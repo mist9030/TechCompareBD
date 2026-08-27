@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { getWishlist, removeFromWishlist, getProduct } from "@/lib/data";
 import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
-import { lowest } from "@/lib/catalog";
+import { lowest, getProductImage } from "@/lib/catalog";
 
 export default function WishlistPage() {
   const { user, loading } = useAuth();
@@ -46,17 +46,39 @@ export default function WishlistPage() {
       {items.length === 0 ? (
         <div className="text-ink-soft text-sm">Nothing saved yet — heart a product from its detail page.</div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="space-y-3">
           {items.map(({ wishId, product }) => {
             const low = lowest(product);
+            const image = getProductImage(product);
             return (
-              <div key={wishId} className="card p-3.5 relative">
-                <button onClick={() => remove(wishId)} className="absolute top-2 right-2 text-ink-soft text-xs z-10">✕</button>
-                <Link href={`/products/${product.id}`}>
-                  <div className="thumb mb-3"><div className="thumb-icon"><CategoryIcon cat={product.cat} size={44} /></div></div>
-                  <div className="font-semibold text-[14px] leading-snug mb-2 line-clamp-2">{product.name}</div>
-                  {low ? <PriceChip price={low.price} /> : <span className="badge badge-outofstock">Out of stock</span>}
+              <div key={wishId} className="card relative p-3.5 md:p-4 flex items-center gap-4">
+                <Link href={`/products/${product.id}`} className="w-20 h-20 md:w-24 md:h-24 rounded-lg bg-pcb-tint border border-line-soft shrink-0 overflow-hidden flex items-center justify-center">
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={product.name}
+                      className="w-full h-full object-contain bg-white p-2"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                        e.currentTarget.nextElementSibling?.classList.remove("hidden");
+                      }}
+                    />
+                  ) : null}
+                  <div className={`${image ? "hidden" : ""} flex items-center justify-center w-full h-full`}>
+                    <CategoryIcon cat={product.cat} size={42} />
+                  </div>
                 </Link>
+                <Link href={`/products/${product.id}`} className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold text-ink-soft uppercase tracking-wide mb-1">{product.brand || product.cat}</div>
+                  <div className="font-semibold text-[15px] md:text-[16px] leading-snug mb-2">{product.name}</div>
+                  <div className="text-[12px] text-ink-soft">{product.offers?.length || 0} shop{(product.offers?.length || 0) === 1 ? "" : "s"} tracked</div>
+                </Link>
+                <div className="shrink-0 pr-8">
+                  {low ? <PriceChip price={low.price} size="lg" /> : <span className="badge badge-outofstock">Out of stock</span>}
+                </div>
+                <button onClick={() => remove(wishId)} className="absolute top-3 right-3 text-ink-soft text-xs bg-white/90 rounded-full w-7 h-7 flex items-center justify-center border border-line-soft hover:text-red" aria-label="Remove from wishlist">✕</button>
               </div>
             );
           })}

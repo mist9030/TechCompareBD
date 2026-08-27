@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getProducts, getShops, getBuild, saveBuild, updateBuild } from "@/lib/data";
-import { BUILD_SLOTS, CAT_LABEL, fmt, lowest } from "@/lib/catalog";
+import { BUILD_SLOTS, CAT_LABEL, fmt, lowest, getProductImage } from "@/lib/catalog";
 import { checkCompatibility } from "@/lib/compat";
 import { downloadBuildPDF } from "@/lib/pdf";
 import { useAuth } from "@/lib/AuthContext";
@@ -41,54 +41,85 @@ function BuilderInner() {
   // Restore an existing saved build. Product IDs are stored in Firestore,
   // while the builder needs the full product objects for prices/specs.
   useEffect(() => {
-    if (!user || !products.length) return;
+    if (!user || !products.length || !buildId) return;
 
     let cancelled = false;
     setLoadError("");
 
-    if (buildId) {
-      getBuild(buildId)
-        .then((savedBuild) => {
-          if (cancelled) return;
-          if (!savedBuild) {
-            setLoadError("This saved build could not be found or you do not have access to it.");
-            return;
-          }
+    getBuild(buildId)
+      .then((savedBuild) => {
+        if (cancelled) return;
+        if (!savedBuild) {
+          setLoadError("This saved build could not be found or you do not have access to it.");
+          return;
+        }
 
-          const restored = {};
-          BUILD_SLOTS.forEach((cat) => {
-            const pid = savedBuild.components?.[cat];
-            if (!pid) return;
-            const product = products.find((p) => p.id === pid);
-            if (product) restored[cat] = product;
-          });
-
-          setBuild(restored);
-          setBuildName(savedBuild.name || "My PC Build");
-          setBudget(savedBuild.budget != null ? String(savedBuild.budget) : "");
-          setEditingBuildId(savedBuild.id);
-          setSaved(false);
-        })
-        .catch((err) => {
-          console.error("Failed to load saved build", err);
-          if (!cancelled) setLoadError("Could not load this saved build. Please try again.");
+        const restored = {};
+        BUILD_SLOTS.forEach((cat) => {
+          const pid = savedBuild.components?.[cat];
+          if (!pid) return;
+          const product = products.find((p) => p.id === pid);
+          if (product) restored[cat] = product;
         });
 
-      return () => { cancelled = true; };
-    }
-
-    // Keep the existing "Use in PC Builder" product flow working.
-    if (slotParam && pidParam) {
-      const product = products.find((x) => x.id === pidParam);
-      if (product) {
-        setBuild((current) => ({ ...current, [slotParam]: product }));
+        setBuild(restored);
+        setBuildName(savedBuild.name || "My PC Build");
+        setBudget(savedBuild.budget != null ? String(savedBuild.budget) : "");
+        setEditingBuildId(savedBuild.id);
         setSaved(false);
-      }
+      })
+      .catch((err) => {
+        console.error("Failed to load saved build", err);
+        if (!cancelled) setLoadError("Could not load this saved build. Please try again.");
+      });
+
+    return () => { cancelled = true; };
+  }, [user, products, buildId]);
+
+  // Restore products previously added from product pages. This is intentionally
+  // separate from a saved Firestore build: the user can collect parts here
+  // and later open PC Builder manually to review/change/save the build.
+  useEffect(() => {
+    if (buildId || !products.length) return;
+
+    const key = user?.uid ? `techcompare:pc-builder:${user.uid}` : "techcompare:pc-builder:guest";
+    try {
+      const savedSlots = JSON.parse(window.localStorage.getItem(key) || "{}");
+      const restored = {};
+      BUILD_SLOTS.forEach((cat) => {
+        const pid = savedSlots?.[cat];
+        if (!pid) return;
+        const product = products.find((p) => p.id === pid);
+        if (product) restored[cat] = product;
+      });
+      if (Object.keys(restored).length) setBuild(restored);
+    } catch (err) {
+      console.error("Failed to restore PC Builder selections", err);
+    }
+  }, [user, products, buildId]);
+
+  // Keep old/shared builder URLs working if someone still has one bookmarked.
+  // New product-page clicks no longer navigate here; they save to local storage.
+  useEffect(() => {
+    if (buildId || !products.length || !slotParam || !pidParam) return;
+
+    const validSlot = BUILD_SLOTS.includes(slotParam) ? slotParam : null;
+    if (!validSlot) {
+      setLoadError(`The ${slotParam} category is not a PC Builder component.`);
+      return;
     }
 
+    const product = products.find((x) => x.id === pidParam);
+    if (!product) {
+      setLoadError("The selected product could not be found.");
+      return;
+    }
+
+    setBuild((current) => ({ ...current, [validSlot]: product }));
     setEditingBuildId(null);
-    return () => { cancelled = true; };
-  }, [user, products, buildId, slotParam, pidParam]);
+    setSaved(false);
+    setLoadError("");
+  }, [products, buildId, slotParam, pidParam]);
 
   const issues = useMemo(() => checkCompatibility(build), [build]);
 
@@ -142,8 +173,21 @@ function BuilderInner() {
     return { sum, picks };
   }, [slots, shops]);
 
+  function persistBuilderSelection(cat, productId) {
+    const key = user?.uid ? `techcompare:pc-builder:${user.uid}` : "techcompare:pc-builder:guest";
+    try {
+      const current = JSON.parse(window.localStorage.getItem(key) || "{}");
+      if (productId) current[cat] = productId;
+      else delete current[cat];
+      window.localStorage.setItem(key, JSON.stringify(current));
+    } catch (err) {
+      console.error("Failed to persist PC Builder selection", err);
+    }
+  }
+
   function pick(cat, product) {
     setBuild((b) => ({ ...b, [cat]: product }));
+    persistBuilderSelection(cat, product?.id);
     setPickerSlot(null);
     setSaved(false);
   }
@@ -154,6 +198,7 @@ function BuilderInner() {
       delete n[cat];
       return n;
     });
+    persistBuilderSelection(cat, null);
     setSaved(false);
   }
 
@@ -221,9 +266,9 @@ function BuilderInner() {
           <div className="space-y-2">
             {slots.map((s) => (
               <div key={s.cat} className="card p-3 flex items-center gap-3">
-                {s.product?.images?.[0] ? (
+                {getProductImage(s.product) ? (
                   <div className="w-11 h-11 rounded-lg bg-white border border-line-soft flex items-center justify-center shrink-0 overflow-hidden">
-                    <img src={s.product.images[0]} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    <img src={getProductImage(s.product)} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   </div>
                 ) : (
                   <div className="w-11 h-11 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0">
@@ -345,9 +390,9 @@ function Picker({ cat, products, onPick, onClose }) {
             const low = lowest(p);
             return (
               <button key={p.id} onClick={() => onPick(p)} className="w-full flex items-center gap-3 p-3 hover:bg-pcb-tint text-left border-b border-line-soft last:border-0">
-                {p.images?.[0] ? (
+                {getProductImage(p) ? (
                   <div className="w-10 h-10 rounded-lg bg-white border border-line-soft flex items-center justify-center shrink-0 overflow-hidden">
-                    <img src={p.images[0]} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    <img src={getProductImage(p)} alt="" className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   </div>
                 ) : (
                   <div className="w-10 h-10 rounded-lg bg-pcb-tint flex items-center justify-center shrink-0"><CategoryIcon cat={cat} size={18} /></div>
