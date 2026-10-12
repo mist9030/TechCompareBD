@@ -1,0 +1,1488 @@
+diff --git a/app/builder/page.js b/app/builder/page.js
+index 77a0c47..eb0c2d7 100644
+--- a/app/builder/page.js
++++ b/app/builder/page.js
+@@ -1,7 +1,8 @@
+ "use client";
+ import { Suspense, useEffect, useMemo, useState } from "react";
+ import { useSearchParams } from "next/navigation";
+-import { getProducts, getShops, getBuild, saveBuild, updateBuild } from "@/lib/data";
++import { getBuild, saveBuild, updateBuild } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { BUILD_SLOTS, CAT_LABEL, fmt, lowest, getProductImage } from "@/lib/catalog";
+ import { checkCompatibility } from "@/lib/compat";
+ import { downloadBuildPDF } from "@/lib/pdf";
+@@ -16,8 +17,7 @@ function BuilderInner() {
+   const slotParam = params.get("slot");
+   const pidParam = params.get("pid");
+ 
+-  const [products, setProducts] = useState([]);
+-  const [shops, setShops] = useState([]);
++  const { products, shops } = useCatalog();
+   const [build, setBuild] = useState({});
+   const [pickerSlot, setPickerSlot] = useState(null);
+   const [buildName, setBuildName] = useState("My PC Build");
+@@ -27,17 +27,6 @@ function BuilderInner() {
+   const [editingBuildId, setEditingBuildId] = useState(null);
+   const [loadError, setLoadError] = useState("");
+ 
+-  useEffect(() => {
+-    let cancelled = false;
+-    Promise.all([getProducts(), getShops()]).then(([p, s]) => {
+-      if (!cancelled) {
+-        setProducts(p);
+-        setShops(s);
+-      }
+-    });
+-    return () => { cancelled = true; };
+-  }, []);
+-
+   // Restore an existing saved build. Product IDs are stored in Firestore,
+   // while the builder needs the full product objects for prices/specs.
+   useEffect(() => {
+diff --git a/app/categories/page.js b/app/categories/page.js
+index 531f296..f8ef0f0 100644
+--- a/app/categories/page.js
++++ b/app/categories/page.js
+@@ -1,20 +1,11 @@
+ "use client";
+-import { useEffect, useState } from "react";
+ import Link from "next/link";
+-import { getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { CAT_LABEL } from "@/lib/catalog";
+ import CategoryIcon from "@/components/CategoryIcon";
+ 
+ export default function CategoriesPage() {
+-  const [products, setProducts] = useState([]);
+-  const [loading, setLoading] = useState(true);
+-
+-  useEffect(() => {
+-    getProducts().then((p) => {
+-      setProducts(p);
+-      setLoading(false);
+-    });
+-  }, []);
++  const { products, loading } = useCatalog();
+ 
+   const cats = Object.keys(CAT_LABEL);
+ 
+diff --git a/app/compare/page.js b/app/compare/page.js
+index 8bea0a5..34a65af 100644
+--- a/app/compare/page.js
++++ b/app/compare/page.js
+@@ -1,7 +1,7 @@
+ "use client";
+-import { Suspense, useEffect, useMemo, useState } from "react";
++import { Suspense, useMemo, useState } from "react";
+ import { useSearchParams, useRouter } from "next/navigation";
+-import { getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
+ import PriceChip from "@/components/PriceChip";
+ import CategoryIcon from "@/components/CategoryIcon";
+@@ -9,12 +9,10 @@ import CategoryIcon from "@/components/CategoryIcon";
+ function CompareInner() {
+   const params = useSearchParams();
+   const router = useRouter();
+-  const [all, setAll] = useState([]);
++  const { products: all } = useCatalog();
+   const [ids, setIds] = useState((params.get("ids") || "").split(",").filter(Boolean));
+   const [query, setQuery] = useState("");
+ 
+-  useEffect(() => { getProducts().then(setAll); }, []);
+-
+   const selected = ids.map((id) => all.find((p) => p.id === id)).filter(Boolean);
+ 
+   function addId(id) {
+diff --git a/app/deals/page.js b/app/deals/page.js
+index 1c780e3..451903b 100644
+--- a/app/deals/page.js
++++ b/app/deals/page.js
+@@ -1,7 +1,6 @@
+ "use client";
+-import { useEffect, useState } from "react";
+ import Link from "next/link";
+-import { getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { lowest } from "@/lib/catalog";
+ import PriceChip from "@/components/PriceChip";
+ import CategoryIcon from "@/components/CategoryIcon";
+@@ -35,15 +34,7 @@ function DealRow({ product, drop }) {
+ }
+ 
+ export default function DealsPage() {
+-  const [products, setProducts] = useState([]);
+-  const [loading, setLoading] = useState(true);
+-
+-  useEffect(() => {
+-    getProducts().then((p) => {
+-      setProducts(p);
+-      setLoading(false);
+-    });
+-  }, []);
++  const { products, loading } = useCatalog();
+ 
+   const withDrop = products.map((p) => ({ p, drop: priceDrop(p) })).filter((x) => x.drop);
+   const biggestDrops = [...withDrop].sort((a, b) => b.drop.delta - a.drop.delta).slice(0, 4);
+diff --git a/app/history/page.js b/app/history/page.js
+index 7b759bb..a7a380c 100644
+--- a/app/history/page.js
++++ b/app/history/page.js
+@@ -11,7 +11,8 @@ import {
+   ResponsiveContainer,
+ } from "recharts";
+ 
+-import { getProducts, getProduct, getPriceHistory } from "@/lib/data";
++import { getPriceHistory } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { fmt, lowest } from "@/lib/catalog";
+ import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
+ import PriceChip from "@/components/PriceChip";
+@@ -20,12 +21,10 @@ function HistoryInner() {
+   const params = useSearchParams();
+   const router = useRouter();
+ 
+-  const [products, setProducts] = useState([]);
+-  const [product, setProduct] = useState(null);
++  const { products, loading } = useCatalog();
+   const [realHistory, setRealHistory] = useState(null);
+ 
+   const [range, setRange] = useState("30D");
+-  const [loading, setLoading] = useState(true);
+ 
+   // Search UI
+   const [search, setSearch] = useState("");
+@@ -33,27 +32,26 @@ function HistoryInner() {
+ 
+   const id = params.get("id");
+ 
+-  /* ---------------- Load products ---------------- */
+-
+- useEffect(() => {
+-  getProducts().then((list) => {
+-    setProducts(list);
+-    setLoading(false);
+-  });
+-}, []);
+-  useEffect(() => {
+-    if (!id) return;
+-
+-    getProduct(id).then(setProduct);
+-    getPriceHistory(id).then(setRealHistory);
+-  }, [id]);
+-
+   /* ---------------- Selected product ---------------- */
++  // The product itself comes straight from the already-loaded catalog
++  // cache; only the price history (real per-product time series) is a
++  // dedicated Firestore read, one per selection.
+ 
+   const selectedProduct = useMemo(
+-    () => products.find((p) => p.id === id),
++    () => products.find((p) => p.id === id) || null,
+     [products, id]
+   );
++  const product = selectedProduct;
++
++  useEffect(() => {
++    if (!id) { setRealHistory(null); return; }
++    setRealHistory(null);
++    let cancelled = false;
++    getPriceHistory(id)
++      .then((h) => { if (!cancelled) setRealHistory(h); })
++      .catch((err) => console.error("Failed to load price history", err));
++    return () => { cancelled = true; };
++  }, [id]);
+ 
+   /* ---------------- Search results ---------------- */
+ 
+diff --git a/app/layout.js b/app/layout.js
+index 4c124d5..91b9e85 100644
+--- a/app/layout.js
++++ b/app/layout.js
+@@ -1,5 +1,7 @@
+ import "./globals.css";
+ import { AuthProvider } from "@/lib/AuthContext";
++import { CatalogProvider } from "@/lib/CatalogContext";
++import { WishlistProvider } from "@/lib/WishlistContext";
+ import Header from "@/components/Header";
+ import Footer from "@/components/Footer";
+ 
+@@ -21,11 +23,15 @@ export default function RootLayout({ children }) {
+         />
+       </head>
+       <body>
+-        <AuthProvider>
+-          <Header />
+-          <main>{children}</main>
+-          <Footer />
+-        </AuthProvider>
++        <CatalogProvider>
++          <AuthProvider>
++            <WishlistProvider>
++              <Header />
++              <main>{children}</main>
++              <Footer />
++            </WishlistProvider>
++          </AuthProvider>
++        </CatalogProvider>
+       </body>
+     </html>
+   );
+diff --git a/app/page.js b/app/page.js
+index 48cbfe9..a68f7ae 100644
+--- a/app/page.js
++++ b/app/page.js
+@@ -1,21 +1,12 @@
+ "use client";
+-import { useEffect, useState } from "react";
+ import Link from "next/link";
+-import { getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { CAT_LABEL, lowest } from "@/lib/catalog";
+ import ProductCard from "@/components/ProductCard";
+ import CategoryIcon from "@/components/CategoryIcon";
+ 
+ export default function Home() {
+-  const [products, setProducts] = useState([]);
+-  const [loading, setLoading] = useState(true);
+-
+-  useEffect(() => {
+-    getProducts().then((p) => {
+-      setProducts(p);
+-      setLoading(false);
+-    });
+-  }, []);
++  const { products, loading } = useCatalog();
+ 
+   const deals = [...products].filter((p) => p.discount > 0).sort((a, b) => b.discount - a.discount).slice(0, 4);
+   const cats = Object.keys(CAT_LABEL);
+diff --git a/app/products/[id]/page.js b/app/products/[id]/page.js
+index 9efca49..addc084 100644
+--- a/app/products/[id]/page.js
++++ b/app/products/[id]/page.js
+@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
+ import Link from "next/link";
+ import { useParams } from "next/navigation";
+ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+-import { getProduct, getProductsByCategory, addToWishlist, getPriceHistory, getWishlist } from "@/lib/data";
++import { getProduct, getPriceHistory } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
++import { useWishlist } from "@/lib/WishlistContext";
+ import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage } from "@/lib/catalog";
+ import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
+ import { useAuth } from "@/lib/AuthContext";
+@@ -14,66 +16,64 @@ import ProductCard from "@/components/ProductCard";
+ export default function ProductDetail() {
+   const { id } = useParams();
+   const { user } = useAuth();
+-  const [product, setProduct] = useState(null);
+-  const [similar, setSimilar] = useState([]);
+-  const [saved, setSaved] = useState(false);
++  const { products: cachedProducts, loading: catalogLoading } = useCatalog();
++  const { isWishlisted, toggle: toggleWishlist } = useWishlist();
++  const [fallbackProduct, setFallbackProduct] = useState(null);
+   const [realHistory, setRealHistory] = useState(null); // null = not loaded yet, [] = loaded but empty
+   const [range, setRange] = useState("30D");
+   const [builderSaved, setBuilderSaved] = useState(false);
+ 
++  // Cache-first lookup: once the catalog has loaded, a product already in
++  // it never touches Firestore at all — this is what makes navigating
++  // Products -> Details -> Back instant instead of re-fetching. The
++  // getProduct() fallback only fires for a product genuinely missing from
++  // the cache (e.g. a very fresh admin add opened via a direct link before
++  // this tab's delta sync has caught up), and only after the catalog has
++  // finished its own first load.
++  const cachedProduct = useMemo(() => cachedProducts.find((p) => p.id === id) || null, [cachedProducts, id]);
++  const product = cachedProduct || fallbackProduct;
++
+   useEffect(() => {
+-    let cancelled = false;
+-    setProduct(null);
+-    setSimilar([]);
+-    setRealHistory(null);
++    setFallbackProduct(null);
++    if (!id || catalogLoading || cachedProduct) return;
+ 
+-    // Render the product as soon as its document is available. Price history
+-    // and similar products are secondary data and should never block the
+-    // product detail screen—especially when returning with the browser Back
+-    // button. The data layer caches these requests as well.
++    let cancelled = false;
+     getProduct(id)
+       .then((p) => {
+-        if (cancelled) return;
+-        setProduct(p);
+-        if (!p) return;
++        if (!cancelled) setFallbackProduct(p);
++      })
++      .catch((err) => console.error("Failed to load product", err));
++    return () => { cancelled = true; };
++  }, [id, catalogLoading, cachedProduct]);
+ 
+-        getPriceHistory(id)
+-          .then((historyData) => {
+-            if (!cancelled) setRealHistory(historyData);
+-          })
+-          .catch((err) => {
+-            console.error("Failed to load price history", err);
+-            if (!cancelled) setRealHistory([]);
+-          });
++  // Similar products come straight from the already-loaded cache — no
++  // separate Firestore query per product page.
++  const similar = useMemo(() => {
++    if (!product) return [];
++    return cachedProducts.filter((p) => p.cat === product.cat && p.id !== product.id).slice(0, 4);
++  }, [cachedProducts, product]);
+ 
+-        getProductsByCategory(p.cat)
+-          .then((sameCategory) => {
+-            if (!cancelled) setSimilar(sameCategory.filter((x) => x.id !== p.id).slice(0, 4));
+-          })
+-          .catch((err) => console.error("Failed to load similar products", err));
++  // Price history is real per-product time-series data that doesn't belong
++  // in the catalog cache — it stays a direct, per-product Firestore read.
++  useEffect(() => {
++    setRealHistory(null);
++    if (!id) return;
++    let cancelled = false;
++    getPriceHistory(id)
++      .then((historyData) => {
++        if (!cancelled) setRealHistory(historyData);
+       })
+       .catch((err) => {
+-        console.error("Failed to load product", err);
+-        if (!cancelled) setProduct(null);
++        console.error("Failed to load price history", err);
++        if (!cancelled) setRealHistory([]);
+       });
+-
+     return () => { cancelled = true; };
+   }, [id]);
+ 
+-  // Keep the wishlist button marked after navigating away and coming back.
+-  useEffect(() => {
+-    if (!user || !id) {
+-      setSaved(false);
+-      return;
+-    }
+-    let cancelled = false;
+-    getWishlist(user.uid)
+-      .then((wish) => {
+-        if (!cancelled) setSaved(wish.some((item) => item.productId === id));
+-      })
+-      .catch((err) => console.error("Failed to load wishlist state", err));
+-    return () => { cancelled = true; };
+-  }, [user, id]);
++  // Wishlist state now comes from WishlistContext (fetched once per
++  // login, shared across every page) instead of a per-mount getWishlist()
++  // call here.
++  const saved = isWishlisted(id);
+ 
+   useEffect(() => {
+     if (!id) return;
+@@ -110,8 +110,7 @@ export default function ProductDetail() {
+ 
+   async function handleWishlist() {
+     if (!user || saved) return;
+-    await addToWishlist(user.uid, product.id);
+-    setSaved(true);
++    await toggleWishlist(product.id);
+   }
+ 
+   function handleUseInBuilder() {
+diff --git a/app/products/page.js b/app/products/page.js
+index 55cc813..9253cd6 100644
+--- a/app/products/page.js
++++ b/app/products/page.js
+@@ -1,10 +1,10 @@
+ "use client";
+ 
+-import { Suspense, useEffect, useMemo, useState } from "react";
++import { Suspense, useMemo, useState } from "react";
+ import { useSearchParams, useRouter } from "next/navigation";
+ import Link from "next/link";
+ 
+-import { getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
+ import { CAT_LABEL, lowest } from "@/lib/catalog";
+ 
+ const CATEGORY_ORDER = [
+@@ -89,8 +89,7 @@ function ProductsInner() {
+      State
+      ---------------------------------------------------------- */
+ 
+-  const [products, setProducts] = useState([]);
+-  const [loading, setLoading] = useState(true);
++  const { products, loading } = useCatalog();
+ 
+   const [search, setSearch] = useState(
+     params.get("q") || ""
+@@ -144,43 +143,10 @@ function ProductsInner() {
+     useState("");
+ 
+   /* ==========================================================
+-     Load Products
++     Products now come from useCatalog() above — no per-page
++     Firestore fetch, no loading flicker on Back navigation.
+      ========================================================== */
+ 
+-  useEffect(() => {
+-    let cancelled = false;
+-
+-    async function loadProducts() {
+-      try {
+-        const data = await getProducts();
+-
+-        if (!cancelled) {
+-          setProducts(
+-            Array.isArray(data) ? data : []
+-          );
+-
+-          setLoading(false);
+-        }
+-      } catch (error) {
+-        console.error(
+-          "Failed to load products:",
+-          error
+-        );
+-
+-        if (!cancelled) {
+-          setProducts([]);
+-          setLoading(false);
+-        }
+-      }
+-    }
+-
+-    loadProducts();
+-
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, []);
+-
+   /* ==========================================================
+      Shops
+      ========================================================== */
+diff --git a/app/profile/page.js b/app/profile/page.js
+index 4f2e7e6..864fca5 100644
+--- a/app/profile/page.js
++++ b/app/profile/page.js
+@@ -2,23 +2,23 @@
+ import { useEffect, useState } from "react";
+ import Link from "next/link";
+ import { useAuth } from "@/lib/AuthContext";
+-import { getUserBuilds, deleteBuild, updateBuild, getProducts } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
++import { getUserBuilds, deleteBuild, updateBuild } from "@/lib/data";
+ import { fmt, CAT_LABEL, BUILD_SLOTS, lowest } from "@/lib/catalog";
+ import { downloadBuildPDF } from "@/lib/pdf";
+ 
+ export default function ProfilePage() {
+   const { user, profile, loading } = useAuth();
++  const { products } = useCatalog();
+   const [builds, setBuilds] = useState([]);
+-  const [products, setProducts] = useState([]);
+   const [busy, setBusy] = useState(true);
+   const [editingId, setEditingId] = useState(null);
+   const [editName, setEditName] = useState("");
+ 
+   useEffect(() => {
+     if (!user) { setBusy(false); return; }
+-    Promise.all([getUserBuilds(user.uid), getProducts()]).then(([b, p]) => {
++    getUserBuilds(user.uid).then((b) => {
+       setBuilds(b);
+-      setProducts(p);
+       setBusy(false);
+     }).catch((err) => {
+       console.error("Failed to load profile builds", err);
+diff --git a/app/wishlist/page.js b/app/wishlist/page.js
+index 78ea058..ab524e6 100644
+--- a/app/wishlist/page.js
++++ b/app/wishlist/page.js
+@@ -1,35 +1,33 @@
+ "use client";
+-import { useEffect, useState } from "react";
++import { useMemo } from "react";
+ import Link from "next/link";
+ import { useAuth } from "@/lib/AuthContext";
+-import { getWishlist, removeFromWishlist, getProduct } from "@/lib/data";
++import { useCatalog } from "@/lib/CatalogContext";
++import { useWishlist } from "@/lib/WishlistContext";
+ import PriceChip from "@/components/PriceChip";
+ import CategoryIcon from "@/components/CategoryIcon";
+ import { lowest, getProductImage } from "@/lib/catalog";
+ 
+ export default function WishlistPage() {
+   const { user, loading } = useAuth();
+-  const [items, setItems] = useState([]);
+-  const [busy, setBusy] = useState(true);
++  const { products: cachedProducts, loading: catalogLoading } = useCatalog();
++  const { entries, loading: wishlistLoading, remove } = useWishlist();
++  const busy = wishlistLoading;
+ 
+-  useEffect(() => {
+-    if (!user) { setBusy(false); return; }
+-    (async () => {
+-      const wish = await getWishlist(user.uid);
+-      const withProducts = await Promise.all(
+-        wish.map(async (w) => ({ wishId: w.id, product: await getProduct(w.productId) }))
+-      );
+-      setItems(withProducts.filter((x) => x.product));
+-      setBusy(false);
+-    })();
+-  }, [user]);
++  // Wishlist entries come from WishlistContext (fetched once per login,
++  // shared across every page — see lib/WishlistContext.js). Product
++  // details for each entry are resolved from the already-loaded catalog
++  // cache below — no per-item getDoc(), and no re-fetch of the wishlist
++  // list itself on every visit to this page.
++  const items = useMemo(() => {
++    if (!entries.length) return [];
++    const byId = new Map(cachedProducts.map((p) => [p.id, p]));
++    return entries
++      .map(({ id: wishId, productId }) => ({ wishId, product: byId.get(productId) || null }))
++      .filter((x) => x.product);
++  }, [entries, cachedProducts]);
+ 
+-  async function remove(wishId) {
+-    await removeFromWishlist(wishId);
+-    setItems((prev) => prev.filter((x) => x.wishId !== wishId));
+-  }
+-
+-  if (loading || busy) return <div className="max-w-[1240px] mx-auto px-7 py-10 text-ink-soft text-sm">Loading…</div>;
++  if (loading || busy || catalogLoading) return <div className="max-w-[1240px] mx-auto px-7 py-10 text-ink-soft text-sm">Loading…</div>;
+ 
+   if (!user) {
+     return (
+diff --git a/firebase/firestore.rules b/firebase/firestore.rules
+index afa8629..16c32f3 100644
+--- a/firebase/firestore.rules
++++ b/firebase/firestore.rules
+@@ -32,6 +32,17 @@ service cloud.firestore {
+       allow write: if isAdmin();
+     }
+ 
++    // Catalog sync watermark, used by the client-side cache
++    // (lib/cache/catalogSync.js) to know when products/shops/categories
++    // changed without re-reading those collections. One tiny document,
++    // bumped automatically by every admin write and by the ingestion
++    // pipeline (lib/data.js:bumpCatalogMeta / lib/ingestion/ingest.js).
++    // Public read so logged-out visitors' caches can stay in sync too.
++    match /meta/{id} {
++      allow read: if true;
++      allow write: if isAdmin();
++    }
++
+     // Real price observations written by the ingestion pipeline
+     // (lib/ingestion/ingest.js). Public read so the product detail page's
+     // chart works for everyone; writes happen almost exclusively via the
+diff --git a/lib/CatalogContext.js b/lib/CatalogContext.js
+new file mode 100644
+index 0000000..9d77d7c
+--- /dev/null
++++ b/lib/CatalogContext.js
+@@ -0,0 +1,52 @@
++"use client";
++// App-wide access point for the cached public catalog (products/shops/
++// categories). Mounted ONCE at the root layout. Every page reads from this
++// context instead of calling lib/data.js's getProducts()/getShops()/
++// getCategories() directly — see lib/cache/catalogSync.js for how the
++// underlying IndexedDB cache is actually kept in sync with Firestore.
++import { createContext, useContext, useEffect, useState } from "react";
++import { ensureCatalogSynced, subscribe, getSnapshot, stopCatalogSync } from "@/lib/cache/catalogSync";
++
++const CatalogCtx = createContext(null);
++
++export function CatalogProvider({ children }) {
++  const [state, setState] = useState(getSnapshot());
++
++  useEffect(() => {
++    const unsubscribe = subscribe(setState);
++    ensureCatalogSynced().catch((err) => console.error("Catalog sync failed to start", err));
++    setState({ ...getSnapshot() });
++
++    return () => {
++      unsubscribe();
++      // Note: intentionally NOT calling stopCatalogSync() here in normal
++      // operation — CatalogProvider lives at the root layout for the whole
++      // app session, so tearing down the Firestore listener on every
++      // Fast-Refresh/remount would be wasteful. stopCatalogSync is exported
++      // for tests and for an explicit "log out fully" flow if one is ever
++      // needed.
++    };
++  }, []);
++
++  const value = {
++    products: state.products,
++    shops: state.shops,
++    categories: state.categories,
++    // `loading` is true only until the FIRST paintable data exists — either
++    // an already-populated cache (near-instant) or, on a brand-new browser,
++    // the initial full sync. Background delta syncs after that never flip
++    // this back to true, so navigating around never shows a spinner again.
++    loading: !state.ready,
++    syncError: state.error || null,
++  };
++
++  return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;
++}
++
++export function useCatalog() {
++  const ctx = useContext(CatalogCtx);
++  if (!ctx) throw new Error("useCatalog must be used within CatalogProvider");
++  return ctx;
++}
++
++export { stopCatalogSync };
+diff --git a/lib/WishlistContext.js b/lib/WishlistContext.js
+new file mode 100644
+index 0000000..e10571e
+--- /dev/null
++++ b/lib/WishlistContext.js
+@@ -0,0 +1,124 @@
++"use client";
++
++// lib/WishlistContext.js
++//
++// User-specific data — deliberately kept separate from CatalogContext,
++// which only ever holds the shared public catalog (products/shops/
++// categories). Wishlist entries still live in Firestore as the source of
++// truth (small, per-user, needs to follow the user across devices), but
++// this context fetches them ONCE per login and keeps them in React state
++// for the whole session — every page (product detail, wishlist page)
++// reads the same in-memory list instead of each calling getWishlist()
++// on its own mount.
++//
++// Product details for each entry still resolve through CatalogContext's
++// already-cached array, never a per-item getDoc().
++//
++// Resets on logout / account switch so one user's wishlist can never
++// leak into another session on a shared browser.
++
++import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
++
++import { useAuth } from "@/lib/AuthContext";
++import { getWishlist, addToWishlist, removeFromWishlist } from "@/lib/data";
++
++const WishlistCtx = createContext(null);
++
++export function WishlistProvider({ children }) {
++  const { user } = useAuth();
++  const [entries, setEntries] = useState([]); // [{ id: wishDocId, userId, productId }]
++  const [loading, setLoading] = useState(false);
++
++  useEffect(() => {
++    let cancelled = false;
++
++    if (!user) {
++      // Logged out, or switched accounts — never carry over the previous
++      // user's wishlist state.
++      setEntries([]);
++      return;
++    }
++
++    setLoading(true);
++    getWishlist(user.uid)
++      .then((rows) => {
++        if (!cancelled) setEntries(rows);
++      })
++      .catch((err) => {
++        console.error("Failed to load wishlist:", err);
++        if (!cancelled) setEntries([]);
++      })
++      .finally(() => {
++        if (!cancelled) setLoading(false);
++      });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [user]);
++
++  const isWishlisted = useCallback(
++    (productId) => entries.some((e) => e.productId === productId),
++    [entries]
++  );
++
++  const add = useCallback(
++    async (productId) => {
++      if (!user) return;
++      // Optimistic update so the heart/button state flips instantly.
++      const tempId = `pending:${productId}`;
++      setEntries((prev) => [...prev, { id: tempId, userId: user.uid, productId }]);
++      try {
++        const ref = await addToWishlist(user.uid, productId);
++        setEntries((prev) =>
++          prev.map((e) => (e.id === tempId ? { ...e, id: ref.id } : e))
++        );
++      } catch (err) {
++        // Roll back on failure.
++        setEntries((prev) => prev.filter((e) => e.id !== tempId));
++        throw err;
++      }
++    },
++    [user]
++  );
++
++  const remove = useCallback(async (wishId) => {
++    const entry = entries.find((e) => e.id === wishId);
++    setEntries((prev) => prev.filter((e) => e.id !== wishId));
++    try {
++      await removeFromWishlist(wishId);
++    } catch (err) {
++      // Roll back on failure.
++      if (entry) setEntries((prev) => [...prev, entry]);
++      throw err;
++    }
++  }, [entries]);
++
++  const toggle = useCallback(
++    (productId) => {
++      const existing = entries.find((e) => e.productId === productId);
++      return existing ? remove(existing.id) : add(productId);
++    },
++    [entries, add, remove]
++  );
++
++  const value = useMemo(
++    () => ({
++      entries,
++      loading,
++      isWishlisted,
++      add,
++      remove,
++      toggle,
++    }),
++    [entries, loading, isWishlisted, add, remove, toggle]
++  );
++
++  return <WishlistCtx.Provider value={value}>{children}</WishlistCtx.Provider>;
++}
++
++export function useWishlist() {
++  const ctx = useContext(WishlistCtx);
++  if (!ctx) throw new Error("useWishlist must be used within WishlistProvider");
++  return ctx;
++}
+diff --git a/lib/cache/catalogDB.js b/lib/cache/catalogDB.js
+new file mode 100644
+index 0000000..3b54515
+--- /dev/null
++++ b/lib/cache/catalogDB.js
+@@ -0,0 +1,114 @@
++"use client";
++// Raw IndexedDB wrapper for the persistent, client-side public-catalog
++// cache (products/shops/categories + a small sync-watermark table).
++//
++// This module has NO Firestore knowledge — it only knows how to persist
++// and retrieve plain JS objects in the browser. lib/cache/catalogSync.js
++// is the layer that decides *when* to read from/write to it. Keeping the
++// two separate is what stops IndexedDB/localStorage logic from getting
++// scattered across components.
++
++const DB_NAME = "techcompare-catalog";
++const DB_VERSION = 1;
++const STORES = ["products", "shops", "categories", "meta"];
++
++let dbPromise = null;
++
++function isSupported() {
++  return typeof indexedDB !== "undefined";
++}
++
++function openDB() {
++  if (!isSupported()) {
++    return Promise.reject(new Error("IndexedDB is not available in this environment"));
++  }
++  if (dbPromise) return dbPromise;
++
++  dbPromise = new Promise((resolve, reject) => {
++    const req = indexedDB.open(DB_NAME, DB_VERSION);
++
++    req.onupgradeneeded = () => {
++      const idb = req.result;
++      if (!idb.objectStoreNames.contains("products")) idb.createObjectStore("products", { keyPath: "id" });
++      if (!idb.objectStoreNames.contains("shops")) idb.createObjectStore("shops", { keyPath: "id" });
++      if (!idb.objectStoreNames.contains("categories")) idb.createObjectStore("categories", { keyPath: "id" });
++      if (!idb.objectStoreNames.contains("meta")) idb.createObjectStore("meta", { keyPath: "key" });
++    };
++
++    req.onsuccess = () => resolve(req.result);
++    req.onerror = () => reject(req.error);
++    req.onblocked = () => reject(new Error("IndexedDB upgrade blocked by another open tab"));
++  }).catch((err) => {
++    dbPromise = null; // allow a retry on the next call instead of staying broken forever
++    throw err;
++  });
++
++  return dbPromise;
++}
++
++function runTx(storeNames, mode, work) {
++  return openDB().then(
++    (idb) =>
++      new Promise((resolve, reject) => {
++        const t = idb.transaction(storeNames, mode);
++        const result = work(t);
++        t.oncomplete = () => resolve(result);
++        t.onerror = () => reject(t.error);
++        t.onabort = () => reject(t.error || new Error("IndexedDB transaction aborted"));
++      })
++  );
++}
++
++export async function getAll(store) {
++  const idb = await openDB();
++  return new Promise((resolve, reject) => {
++    const req = idb.transaction([store], "readonly").objectStore(store).getAll();
++    req.onsuccess = () => resolve(req.result || []);
++    req.onerror = () => reject(req.error);
++  });
++}
++
++export async function putAll(store, items) {
++  if (!items?.length) return;
++  return runTx([store], "readwrite", (t) => {
++    const os = t.objectStore(store);
++    items.forEach((item) => os.put(item));
++  });
++}
++
++export async function clearStore(store) {
++  return runTx([store], "readwrite", (t) => t.objectStore(store).clear());
++}
++
++// Applies a delta batch (upserts + deletes-by-id) to a store in a single
++// transaction, so a partial sync can never leave the store half-updated.
++export async function applyDelta(store, { upserts = [], deletes = [] } = {}) {
++  if (!upserts.length && !deletes.length) return;
++  return runTx([store], "readwrite", (t) => {
++    const os = t.objectStore(store);
++    upserts.forEach((item) => os.put(item));
++    deletes.forEach((id) => os.delete(id));
++  });
++}
++
++export async function getMeta(key) {
++  const idb = await openDB();
++  return new Promise((resolve, reject) => {
++    const req = idb.transaction(["meta"], "readonly").objectStore("meta").get(key);
++    req.onsuccess = () => resolve(req.result ? req.result.value : undefined);
++    req.onerror = () => reject(req.error);
++  });
++}
++
++export async function setMeta(key, value) {
++  return runTx(["meta"], "readwrite", (t) => t.objectStore("meta").put({ key, value }));
++}
++
++// Full wipe — used on logout-triggered schema mismatches or a "clear cache"
++// debug action. Never called as part of normal sync/delete flows (those go
++// through applyDelta so unaffected records are left alone).
++export async function wipeAll() {
++  return runTx(STORES, "readwrite", (t) => STORES.forEach((s) => t.objectStore(s).clear()));
++}
++
++export { isSupported };
+diff --git a/lib/cache/catalogSync.js b/lib/cache/catalogSync.js
+new file mode 100644
+index 0000000..06457b5
+--- /dev/null
++++ b/lib/cache/catalogSync.js
+@@ -0,0 +1,243 @@
++"use client";
++// ============================================================================
++// Central synchronization layer between Firestore (public catalog data —
++// products/shops/categories) and the persistent IndexedDB cache
++// (lib/cache/catalogDB.js). This is the ONLY module that decides when
++// Firestore is actually read for catalog data. Every page/component goes
++// through lib/CatalogContext.js -> this module -> IndexedDB. No page ever
++// calls getProducts()/getShops()/getCategories() from lib/data.js directly.
++//
++// Sync model
++// ----------
++// First-ever visit on a browser (IndexedDB empty):
++//   ONE full read of products + shops + categories (unavoidable — there is
++//   nothing to diff against yet), via lib/data.js's existing getProducts/
++//   getShops/getCategories. The very first snapshot of the meta/catalog
++//   listener (see below) is reused to seed the delta watermark, so this
++//   does not cost a second document read.
++//
++// Every later app load (returning visitor):
++//   IndexedDB is read immediately and the UI can render right away
++//   (stale-while-revalidate). In the background, ONE Firestore listener is
++//   attached to the single `meta/catalog` document — not the products/
++//   shops/categories collections. Its first snapshot is compared against
++//   the locally stored watermark for each collection; if a collection's
++//   remote timestamp is newer, a delta query
++//   (`where("updatedAt", ">", lastLocalSync)`) fetches ONLY the
++//   changed/deleted docs for that collection and merges them into
++//   IndexedDB. If nothing changed, zero collection reads happen — just the
++//   1 read for the meta doc itself.
++//
++// Already-open tabs:
++//   The SAME meta/catalog listener keeps the connection open. Firestore
++//   pushes a new snapshot only when an admin write or an ingestion run
++//   actually bumps the doc (see lib/data.js:bumpCatalogMeta and
++//   lib/ingestion/ingest.js) — no polling, no per-page listeners. When a
++//   push arrives, the same delta-query path above runs for whichever
++//   collection(s) changed.
++//
++// This is ONE app-level mechanism (attached once by CatalogProvider at the
++// root layout), not one listener/read per page or per navigation.
++// ============================================================================
++
++import { doc, onSnapshot } from "firebase/firestore";
++import { db } from "@/lib/firebase";
++import { getProducts, getShops, getCategories, getProductsSince, getShopsSince, getCategoriesSince } from "@/lib/data";
++import * as catalogDB from "@/lib/cache/catalogDB";
++
++const SCHEMA_VERSION = 1;
++
++const COLLECTIONS = [
++  { store: "products", metaField: "productsUpdatedAt", watermarkKey: "productsWatermark", deltaFetch: getProductsSince },
++  { store: "shops", metaField: "shopsUpdatedAt", watermarkKey: "shopsWatermark", deltaFetch: getShopsSince },
++  { store: "categories", metaField: "categoriesUpdatedAt", watermarkKey: "categoriesWatermark", deltaFetch: getCategoriesSince },
++];
++
++// In-memory mirror of IndexedDB, refreshed whenever a sync applies changes.
++// Lets React read synchronously (useSyncExternalStore-style) instead of
++// doing an async IndexedDB round trip on every render.
++const memory = { products: [], shops: [], categories: [], ready: false, error: null };
++const listeners = new Set();
++
++function notify() {
++  for (const fn of listeners) fn(memory);
++}
++
++export function subscribe(fn) {
++  listeners.add(fn);
++  return () => listeners.delete(fn);
++}
++
++export function getSnapshot() {
++  return memory;
++}
++
++function toMillis(ts) {
++  if (!ts) return 0;
++  if (typeof ts.toMillis === "function") return ts.toMillis();
++  if (typeof ts === "number") return ts;
++  return 0;
++}
++
++async function loadMemoryFromIndexedDB() {
++  const [products, shops, categories] = await Promise.all([
++    catalogDB.getAll("products"),
++    catalogDB.getAll("shops"),
++    catalogDB.getAll("categories"),
++  ]);
++  memory.products = products;
++  memory.shops = shops;
++  memory.categories = categories;
++}
++
++// First-ever visit (or a cache schema bump): one full read per collection,
++// then seed the delta watermark from the meta snapshot we already have in
++// hand (no extra document read needed).
++async function fullSync(metaData) {
++  const [products, shops, categories] = await Promise.all([getProducts(), getShops(), getCategories()]);
++
++  await Promise.all([
++    catalogDB.clearStore("products").then(() => catalogDB.putAll("products", products)),
++    catalogDB.clearStore("shops").then(() => catalogDB.putAll("shops", shops)),
++    catalogDB.clearStore("categories").then(() => catalogDB.putAll("categories", categories)),
++  ]);
++
++  const now = Date.now();
++  await Promise.all([
++    catalogDB.setMeta("productsWatermark", metaData?.productsUpdatedAt ? toMillis(metaData.productsUpdatedAt) : now),
++    catalogDB.setMeta("shopsWatermark", metaData?.shopsUpdatedAt ? toMillis(metaData.shopsUpdatedAt) : now),
++    catalogDB.setMeta("categoriesWatermark", metaData?.categoriesUpdatedAt ? toMillis(metaData.categoriesUpdatedAt) : now),
++    catalogDB.setMeta("schemaVersion", SCHEMA_VERSION),
++  ]);
++
++  memory.products = products;
++  memory.shops = shops;
++  memory.categories = categories;
++}
++
++// Runs the delta query for ONE collection, only if the meta doc's
++// timestamp for it is actually newer than what we last synced to.
++async function deltaSyncCollection({ store, watermarkKey, deltaFetch }, remoteMillis) {
++  const localMillis = (await catalogDB.getMeta(watermarkKey)) || 0;
++  if (!remoteMillis || remoteMillis <= localMillis) return false; // nothing changed for this collection
++
++  const changed = await deltaFetch(localMillis);
++  if (!changed.length) {
++    await catalogDB.setMeta(watermarkKey, remoteMillis);
++    return false;
++  }
++
++  const upserts = changed.filter((item) => !item.deleted);
++  const deletes = changed.filter((item) => item.deleted).map((item) => item.id);
++
++  await catalogDB.applyDelta(store, { upserts, deletes });
++  await catalogDB.setMeta(watermarkKey, remoteMillis);
++  return true;
++}
++
++// Given an already-fetched meta/catalog snapshot, delta-syncs whichever
++// collections actually moved. Shared by both the initial catch-up and every
++// later live push from the listener.
++async function syncFromMeta(metaData) {
++  if (!metaData) return false;
++  const results = await Promise.all(
++    COLLECTIONS.map((c) => deltaSyncCollection(c, toMillis(metaData[c.metaField])))
++  );
++  const anyChange = results.some(Boolean);
++  if (anyChange) await loadMemoryFromIndexedDB();
++  return anyChange;
++}
++
++let readyPromise = null;
++let unsubscribeMeta = null;
++
++// Entry point — called once by CatalogProvider on mount. Safe to call
++// multiple times concurrently (e.g. React StrictMode double-invoking
++// effects): every caller shares the same in-flight promise, so only one
++// sync/listener setup ever runs.
++export function ensureCatalogSynced() {
++  if (readyPromise) return readyPromise;
++
++  readyPromise = (async () => {
++    let hasLocalData = false;
++    try {
++      const [schema, existingProducts] = await Promise.all([
++        catalogDB.getMeta("schemaVersion"),
++        catalogDB.getAll("products"),
++      ]);
++      hasLocalData = schema === SCHEMA_VERSION && existingProducts.length > 0;
++      if (hasLocalData) await loadMemoryFromIndexedDB();
++    } catch (err) {
++      console.error("Catalog cache unavailable, falling back to a full sync", err);
++      hasLocalData = false;
++    }
++
++    // Paint immediately from whatever we already have cached — this is the
++    // "returning visitor" fast path with zero Firestore reads so far.
++    if (hasLocalData) {
++      memory.ready = true;
++      notify();
++    }
++
++    // Attach ONE app-level listener on the meta/catalog document. Its first
++    // snapshot resolves the promise below (functionally equivalent to a
++    // single getDoc — one read); every snapshot after that is a live push
++    // that fires only when an admin write or ingestion run actually bumps
++    // the doc, and drives the same delta-sync path with no polling.
++    const firstMeta = await new Promise((resolve) => {
++      let first = true;
++      unsubscribeMeta = onSnapshot(
++        doc(db, "meta", "catalog"),
++        (snap) => {
++          const data = snap.exists() ? snap.data() : null;
++          if (first) {
++            first = false;
++            resolve(data);
++            return;
++          }
++          // Live update on an already-open tab.
++          syncFromMeta(data)
++            .then((changed) => {
++              if (changed) notify();
++            })
++            .catch((err) => console.error("Catalog live sync failed", err));
++        },
++        (err) => {
++          console.error("Catalog meta listener error", err);
++          if (first) {
++            first = false;
++            resolve(null);
++          }
++        }
++      );
++    });
++
++    try {
++      if (!hasLocalData) {
++        // First-ever visit on this browser (or a schema-version bump).
++        await fullSync(firstMeta);
++      } else {
++        await syncFromMeta(firstMeta);
++      }
++      memory.error = null;
++    } catch (err) {
++      // Offline or Firestore temporarily unavailable: never wipe/replace
++      // valid cached data just because a sync attempt failed.
++      console.error("Catalog sync failed, continuing with cached data", err);
++      memory.error = err;
++    }
++
++    memory.ready = true;
++    notify();
++  })();
++
++  return readyPromise;
++}
++
++export function stopCatalogSync() {
++  if (unsubscribeMeta) {
++    unsubscribeMeta();
++    unsubscribeMeta = null;
++  }
++  readyPromise = null;
++}
+diff --git a/lib/data.js b/lib/data.js
+index 47ba43d..3702dc7 100644
+--- a/lib/data.js
++++ b/lib/data.js
+@@ -7,10 +7,12 @@ import {
+   addDoc,
+   updateDoc,
+   deleteDoc,
++  setDoc,
+   query,
+   where,
+   orderBy,
+   serverTimestamp,
++  Timestamp,
+ } from "firebase/firestore";
+ import { db } from "./firebase";
+ 
+@@ -33,7 +35,10 @@ export async function getProducts() {
+ 
+   productListCache.promise = getDocs(collection(db, "products"))
+     .then((snap) => {
+-      const value = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
++      // Soft-deleted products (see deleteProduct) never surface to normal
++      // callers or the client cache — they only appear via getProductsSince()
++      // so the delta sync can prune them out of IndexedDB.
++      const value = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+       productListCache.value = value;
+       productListCache.at = Date.now();
+       value.forEach((product) => productCache.set(product.id, { value: product, at: Date.now() }));
+@@ -51,9 +56,11 @@ export async function getProduct(id) {
+   const cached = productCache.get(id);
+   if (cached && Date.now() - cached.at < PRODUCT_CACHE_MS) return cached.value;
+ 
+-  const value = await getDoc(doc(db, "products", id)).then((snap) =>
+-    snap.exists() ? { id: snap.id, ...snap.data() } : null
+-  );
++  const value = await getDoc(doc(db, "products", id)).then((snap) => {
++    if (!snap.exists()) return null;
++    const data = { id: snap.id, ...snap.data() };
++    return data.deleted ? null : data;
++  });
+   productCache.set(id, { value, at: Date.now() });
+   return value;
+ }
+@@ -65,12 +72,28 @@ export async function getProductsByCategory(cat) {
+ 
+   const q = query(collection(db, "products"), where("cat", "==", cat));
+   const snap = await getDocs(q);
+-  const value = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
++  const value = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+   categoryCache.set(cat, { value, at: Date.now() });
+   value.forEach((p) => productCache.set(p.id, { value: p, at: Date.now() }));
+   return value;
+ }
+ 
++// Incremental/delta read for the client-side catalog cache
++// (lib/cache/catalogSync.js). Unlike getProducts(), this does NOT filter
++// out soft-deleted docs — the sync layer needs to see `deleted: true`
++// entries so it can prune them out of IndexedDB. `sinceMillis` is compared
++// against each doc's `updatedAt`, which every write path in this file (and
++// lib/ingestion/ingest.js) sets on create/update/soft-delete.
++export async function getProductsSince(sinceMillis) {
++  const q = query(
++    collection(db, "products"),
++    where("updatedAt", ">", Timestamp.fromMillis(sinceMillis || 0)),
++    orderBy("updatedAt", "asc")
++  );
++  const snap = await getDocs(q);
++  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
++}
++
+ function invalidateProductCaches(id = null) {
+   productListCache.value = null;
+   productListCache.at = 0;
+@@ -78,6 +101,29 @@ function invalidateProductCaches(id = null) {
+   categoryCache.clear();
+ }
+ 
++// Bumps meta/catalog.{field} to serverTimestamp(). This is the ONE signal
++// the client-side cache watches (via a single onSnapshot listener — see
++// lib/cache/catalogSync.js) to know a collection changed, without ever
++// having to re-read the full collection just to check. Never throws: a
++// failed bump must not block the product/shop/category write that already
++// succeeded — worst case, the next sync just runs one version behind until
++// this succeeds on retry.
++async function bumpCatalogMeta(field) {
++  try {
++    await setDoc(doc(db, "meta", "catalog"), { [field]: serverTimestamp() }, { merge: true });
++  } catch (err) {
++    console.error(`Failed to bump catalog meta (${field})`, err);
++  }
++}
++
++// Single-document read of the sync watermark doc. Used by the cache layer
++// on first-ever visit (to seed initial watermarks) — normal app loads use
++// the onSnapshot listener in catalogSync.js instead of calling this.
++export async function getCatalogMeta() {
++  const snap = await getDoc(doc(db, "meta", "catalog"));
++  return snap.exists() ? snap.data() : null;
++}
++
+ export async function addProduct(data) {
+   const ref = await addDoc(collection(db, "products"), {
+     ...data,
+@@ -85,18 +131,29 @@ export async function addProduct(data) {
+     updatedAt: serverTimestamp(),
+   });
+   invalidateProductCaches();
++  await bumpCatalogMeta("productsUpdatedAt");
+   return ref;
+ }
+ 
+ export async function updateProduct(id, data) {
+   const result = await updateDoc(doc(db, "products", id), { ...data, updatedAt: serverTimestamp() });
+   invalidateProductCaches(id);
++  await bumpCatalogMeta("productsUpdatedAt");
+   return result;
+ }
+ 
+ export async function deleteProduct(id) {
+-  const result = await deleteDoc(doc(db, "products", id));
++  // Soft delete instead of deleteDoc(): the client cache learns about
++  // removals through the same updatedAt-based delta sync as everything
++  // else. A hard delete would just make the doc vanish with nothing for
++  // getProductsSince() to report, so already-cached browsers would keep
++  // showing it forever.
++  const result = await updateDoc(doc(db, "products", id), {
++    deleted: true,
++    updatedAt: serverTimestamp(),
++  });
+   invalidateProductCaches(id);
++  await bumpCatalogMeta("productsUpdatedAt");
+   return result;
+ }
+ 
+@@ -136,33 +193,74 @@ export async function getMatchReview() {
+ /* ---------------- Shops ---------------- */
+ export async function getShops() {
+   const snap = await getDocs(collection(db, "shops"));
++  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((s) => !s.deleted);
++}
++
++// Delta read for the client cache — see getProductsSince() for why deleted
++// docs are intentionally NOT filtered here.
++export async function getShopsSince(sinceMillis) {
++  const q = query(
++    collection(db, "shops"),
++    where("updatedAt", ">", Timestamp.fromMillis(sinceMillis || 0)),
++    orderBy("updatedAt", "asc")
++  );
++  const snap = await getDocs(q);
+   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+ }
+ 
+ export async function addShop(data) {
+-  return addDoc(collection(db, "shops"), { ...data, createdAt: serverTimestamp() });
++  const ref = await addDoc(collection(db, "shops"), {
++    ...data,
++    createdAt: serverTimestamp(),
++    updatedAt: serverTimestamp(),
++  });
++  await bumpCatalogMeta("shopsUpdatedAt");
++  return ref;
+ }
+ 
+ export async function updateShop(id, data) {
+-  return updateDoc(doc(db, "shops", id), data);
++  const result = await updateDoc(doc(db, "shops", id), { ...data, updatedAt: serverTimestamp() });
++  await bumpCatalogMeta("shopsUpdatedAt");
++  return result;
+ }
+ 
+ export async function deleteShop(id) {
+-  return deleteDoc(doc(db, "shops", id));
++  const result = await updateDoc(doc(db, "shops", id), { deleted: true, updatedAt: serverTimestamp() });
++  await bumpCatalogMeta("shopsUpdatedAt");
++  return result;
+ }
+ 
+ /* ---------------- Categories ---------------- */
+ export async function getCategories() {
+   const snap = await getDocs(collection(db, "categories"));
++  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => !c.deleted);
++}
++
++// Delta read for the client cache.
++export async function getCategoriesSince(sinceMillis) {
++  const q = query(
++    collection(db, "categories"),
++    where("updatedAt", ">", Timestamp.fromMillis(sinceMillis || 0)),
++    orderBy("updatedAt", "asc")
++  );
++  const snap = await getDocs(q);
+   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+ }
+ 
+ export async function addCategory(data) {
+-  return addDoc(collection(db, "categories"), data);
++  const ref = await addDoc(collection(db, "categories"), {
++    ...data,
++    createdAt: serverTimestamp(),
++    updatedAt: serverTimestamp(),
++  });
++  await bumpCatalogMeta("categoriesUpdatedAt");
++  return ref;
+ }
+ 
+ export async function deleteCategory(id) {
+-  return deleteDoc(doc(db, "categories", id));
++  const result = await updateDoc(doc(db, "categories", id), { deleted: true, updatedAt: serverTimestamp() });
++  await bumpCatalogMeta("categoriesUpdatedAt");
++  return result;
+ }
+ 
+ /* ---------------- Scraping logs ---------------- */
+diff --git a/lib/ingestion/ingest.js b/lib/ingestion/ingest.js
+index 617ea30..808cf55 100644
+--- a/lib/ingestion/ingest.js
++++ b/lib/ingestion/ingest.js
+@@ -52,6 +52,22 @@ const sleep = (ms) =>
+   new Promise((resolve) => setTimeout(resolve, ms));
+ 
+ 
++// Bumps meta/catalog.{field} to serverTimestamp() — the same document the
++// client-side cache watches via a single onSnapshot listener (see
++// lib/cache/catalogSync.js). This is the Admin SDK counterpart of
++// lib/data.js:bumpCatalogMeta, used by every ingestion write path so a
++// scrape run or a match-review action reaches already-open browsers the
++// same way an admin panel edit does. Never throws: a failed bump must not
++// fail an ingestion run that already wrote real product/shop data.
++async function bumpCatalogMeta(db, field) {
++  try {
++    await db.doc("meta/catalog").set({ [field]: FieldValue.serverTimestamp() }, { merge: true });
++  } catch (err) {
++    console.error(`Failed to bump catalog meta (${field})`, err);
++  }
++}
++
++
+ function computeDiscount(price, previousPrice) {
+   if (
+     !price ||
+@@ -1422,6 +1438,35 @@ console.log(
+       });
+ 
+ 
++    // ========================================================
++    // BUMP CATALOG SYNC METADATA
++    //
++    // Once per run, not once per product — createProduct/
++    // updateProductOffer/markDisappearedOffers can touch dozens or
++    // hundreds of docs in a single run, and bumping a single shared
++    // meta document that many times in a row is unnecessary write
++    // load. One bump at the end is enough for every already-open
++    // browser's listener (see lib/cache/catalogSync.js) to pick up
++    // everything this run changed in one delta query.
++    // ========================================================
++
++    if (
++      counters.created > 0 ||
++      counters.updated > 0 ||
++      counters.disappeared > 0
++    ) {
++      await bumpCatalogMeta(
++        db,
++        "productsUpdatedAt"
++      );
++    }
++
++    await bumpCatalogMeta(
++      db,
++      "shopsUpdatedAt"
++    );
++
++
+     return {
+       jobId:
+         jobRef?.id || null,
+@@ -1484,6 +1529,11 @@ console.log(
+             lastSyncError:
+               message,
+           });
++
++        await bumpCatalogMeta(
++          db,
++          "shopsUpdatedAt"
++        );
+       } catch (statusErr) {
+         console.error(
+           "Failed to update sync error status:",
+@@ -1525,16 +1575,28 @@ export async function applyMatchToExistingProduct(
+   }
+ 
+ 
+-  return updateProductOffer(
++  const result =
++    await updateProductOffer(
++      db,
++      productId,
++      normalized,
++      shop,
++      {
++        id: snap.id,
++        ...snap.data(),
++      }
++    );
++
++
++  // Outside runSync()'s batching — this is a single one-off admin action,
++  // so bump right away instead of waiting for a run that isn't happening.
++  await bumpCatalogMeta(
+     db,
+-    productId,
+-    normalized,
+-    shop,
+-    {
+-      id: snap.id,
+-      ...snap.data(),
+-    }
++    "productsUpdatedAt"
+   );
++
++
++  return result;
+ }
+ 
+ 
+@@ -1546,11 +1608,21 @@ export async function createProductFromReview(
+     getAdminDb();
+ 
+ 
+-  return createProduct(
++  const result =
++    await createProduct(
++      db,
++      normalized,
++      shop
++    );
++
++
++  await bumpCatalogMeta(
+     db,
+-    normalized,
+-    shop
++    "productsUpdatedAt"
+   );
++
++
++  return result;
+ }
+ 
+ 

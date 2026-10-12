@@ -1,7 +1,8 @@
 "use client";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getProducts, getShops, getBuild, saveBuild, updateBuild } from "@/lib/data";
+import { getBuild, saveBuild, updateBuild } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { BUILD_SLOTS, CAT_LABEL, fmt, lowest, getProductImage } from "@/lib/catalog";
 import { checkCompatibility } from "@/lib/compat";
 import { downloadBuildPDF } from "@/lib/pdf";
@@ -16,8 +17,7 @@ function BuilderInner() {
   const slotParam = params.get("slot");
   const pidParam = params.get("pid");
 
-  const [products, setProducts] = useState([]);
-  const [shops, setShops] = useState([]);
+  const { products, shops } = useCatalog();
   const [build, setBuild] = useState({});
   const [pickerSlot, setPickerSlot] = useState(null);
   const [buildName, setBuildName] = useState("My PC Build");
@@ -26,17 +26,6 @@ function BuilderInner() {
   const [saved, setSaved] = useState(false);
   const [editingBuildId, setEditingBuildId] = useState(null);
   const [loadError, setLoadError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([getProducts(), getShops()]).then(([p, s]) => {
-      if (!cancelled) {
-        setProducts(p);
-        setShops(s);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   // Restore an existing saved build. Product IDs are stored in Firestore,
   // while the builder needs the full product objects for prices/specs.

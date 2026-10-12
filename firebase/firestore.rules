@@ -32,6 +32,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Catalog sync watermark, used by the client-side cache
+    // (lib/cache/catalogSync.js) to know when products/shops/categories
+    // changed without re-reading those collections. One tiny document,
+    // bumped automatically by every admin write and by the ingestion
+    // pipeline (lib/data.js:bumpCatalogMeta / lib/ingestion/ingest.js).
+    // Public read so logged-out visitors' caches can stay in sync too.
+    match /meta/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Real price observations written by the ingestion pipeline
     // (lib/ingestion/ingest.js). Public read so the product detail page's
     // chart works for everyone; writes happen almost exclusively via the

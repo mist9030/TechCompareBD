@@ -1,5 +1,7 @@
 import "./globals.css";
 import { AuthProvider } from "@/lib/AuthContext";
+import { CatalogProvider } from "@/lib/CatalogContext";
+import { WishlistProvider } from "@/lib/WishlistContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
@@ -21,11 +23,15 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <AuthProvider>
-          <Header />
-          <main>{children}</main>
-          <Footer />
-        </AuthProvider>
+        <CatalogProvider>
+          <AuthProvider>
+            <WishlistProvider>
+              <Header />
+              <main>{children}</main>
+              <Footer />
+            </WishlistProvider>
+          </AuthProvider>
+        </CatalogProvider>
       </body>
     </html>
   );

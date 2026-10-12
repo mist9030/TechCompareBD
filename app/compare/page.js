@@ -1,7 +1,7 @@
 "use client";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { getProducts } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
 import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -9,11 +9,9 @@ import CategoryIcon from "@/components/CategoryIcon";
 function CompareInner() {
   const params = useSearchParams();
   const router = useRouter();
-  const [all, setAll] = useState([]);
+  const { products: all } = useCatalog();
   const [ids, setIds] = useState((params.get("ids") || "").split(",").filter(Boolean));
   const [query, setQuery] = useState("");
-
-  useEffect(() => { getProducts().then(setAll); }, []);
 
   const selected = ids.map((id) => all.find((p) => p.id === id)).filter(Boolean);
 

@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-import { getProducts, getProduct, getPriceHistory } from "@/lib/data";
+import { getPriceHistory } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { fmt, lowest } from "@/lib/catalog";
 import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
 import PriceChip from "@/components/PriceChip";
@@ -20,12 +21,10 @@ function HistoryInner() {
   const params = useSearchParams();
   const router = useRouter();
 
-  const [products, setProducts] = useState([]);
-  const [product, setProduct] = useState(null);
+  const { products, loading } = useCatalog();
   const [realHistory, setRealHistory] = useState(null);
 
   const [range, setRange] = useState("30D");
-  const [loading, setLoading] = useState(true);
 
   // Search UI
   const [search, setSearch] = useState("");
@@ -33,27 +32,26 @@ function HistoryInner() {
 
   const id = params.get("id");
 
-  /* ---------------- Load products ---------------- */
-
- useEffect(() => {
-  getProducts().then((list) => {
-    setProducts(list);
-    setLoading(false);
-  });
-}, []);
-  useEffect(() => {
-    if (!id) return;
-
-    getProduct(id).then(setProduct);
-    getPriceHistory(id).then(setRealHistory);
-  }, [id]);
-
   /* ---------------- Selected product ---------------- */
+  // The product itself comes straight from the already-loaded catalog
+  // cache; only the price history (real per-product time series) is a
+  // dedicated Firestore read, one per selection.
 
   const selectedProduct = useMemo(
-    () => products.find((p) => p.id === id),
+    () => products.find((p) => p.id === id) || null,
     [products, id]
   );
+  const product = selectedProduct;
+
+  useEffect(() => {
+    if (!id) { setRealHistory(null); return; }
+    setRealHistory(null);
+    let cancelled = false;
+    getPriceHistory(id)
+      .then((h) => { if (!cancelled) setRealHistory(h); })
+      .catch((err) => console.error("Failed to load price history", err));
+    return () => { cancelled = true; };
+  }, [id]);
 
   /* ---------------- Search results ---------------- */
 

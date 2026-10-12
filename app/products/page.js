@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { getProducts } from "@/lib/data";
-import { CAT_LABEL, lowest } from "@/lib/catalog";
+import { useCatalog } from "@/lib/CatalogContext";
+import { CAT_LABEL } from "@/lib/catalog";
 
 const CATEGORY_ORDER = [
   "cpu",
@@ -62,8 +62,18 @@ function isOfferInStock(offer) {
 }
 
 function getProductMinPrice(product) {
-  const offer = lowest(product);
-  return offer?.price ? Number(offer.price) : null;
+  const offers = Array.isArray(product?.offers) ? product.offers : [];
+  if (!offers.length) return null;
+
+  let min = Infinity;
+  for (const offer of offers) {
+    const price = Number(offer?.price);
+    if (Number.isFinite(price) && price >= 0 && price < min) {
+      min = price;
+    }
+  }
+
+  return min === Infinity ? null : min;
 }
 
 function formatPrice(price) {
@@ -89,8 +99,7 @@ function ProductsInner() {
      State
      ---------------------------------------------------------- */
 
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { products, loading } = useCatalog();
 
   const [search, setSearch] = useState(
     params.get("q") || ""
@@ -144,42 +153,9 @@ function ProductsInner() {
     useState("");
 
   /* ==========================================================
-     Load Products
+     Products now come from useCatalog() above — no per-page
+     Firestore fetch, no loading flicker on Back navigation.
      ========================================================== */
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadProducts() {
-      try {
-        const data = await getProducts();
-
-        if (!cancelled) {
-          setProducts(
-            Array.isArray(data) ? data : []
-          );
-
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load products:",
-          error
-        );
-
-        if (!cancelled) {
-          setProducts([]);
-          setLoading(false);
-        }
-      }
-    }
-
-    loadProducts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   /* ==========================================================
      Shops

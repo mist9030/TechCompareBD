@@ -2,23 +2,23 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/AuthContext";
-import { getUserBuilds, deleteBuild, updateBuild, getProducts } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
+import { getUserBuilds, deleteBuild, updateBuild } from "@/lib/data";
 import { fmt, CAT_LABEL, BUILD_SLOTS, lowest } from "@/lib/catalog";
 import { downloadBuildPDF } from "@/lib/pdf";
 
 export default function ProfilePage() {
   const { user, profile, loading } = useAuth();
+  const { products } = useCatalog();
   const [builds, setBuilds] = useState([]);
-  const [products, setProducts] = useState([]);
   const [busy, setBusy] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
 
   useEffect(() => {
     if (!user) { setBusy(false); return; }
-    Promise.all([getUserBuilds(user.uid), getProducts()]).then(([b, p]) => {
+    getUserBuilds(user.uid).then((b) => {
       setBuilds(b);
-      setProducts(p);
       setBusy(false);
     }).catch((err) => {
       console.error("Failed to load profile builds", err);

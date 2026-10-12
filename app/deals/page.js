@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getProducts } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { lowest } from "@/lib/catalog";
 import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -35,15 +34,7 @@ function DealRow({ product, drop }) {
 }
 
 export default function DealsPage() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getProducts().then((p) => {
-      setProducts(p);
-      setLoading(false);
-    });
-  }, []);
+  const { products, loading } = useCatalog();
 
   const withDrop = products.map((p) => ({ p, drop: priceDrop(p) })).filter((x) => x.drop);
   const biggestDrops = [...withDrop].sort((a, b) => b.drop.delta - a.drop.delta).slice(0, 4);

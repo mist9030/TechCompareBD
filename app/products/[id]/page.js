@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { getProduct, getProductsByCategory, addToWishlist, getPriceHistory, getWishlist } from "@/lib/data";
+import { getProduct, getPriceHistory } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
+import { useWishlist } from "@/lib/WishlistContext";
 import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage } from "@/lib/catalog";
 import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
 import { useAuth } from "@/lib/AuthContext";
@@ -14,66 +16,64 @@ import ProductCard from "@/components/ProductCard";
 export default function ProductDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const [product, setProduct] = useState(null);
-  const [similar, setSimilar] = useState([]);
-  const [saved, setSaved] = useState(false);
+  const { products: cachedProducts, loading: catalogLoading } = useCatalog();
+  const { isWishlisted, toggle: toggleWishlist } = useWishlist();
+  const [fallbackProduct, setFallbackProduct] = useState(null);
   const [realHistory, setRealHistory] = useState(null); // null = not loaded yet, [] = loaded but empty
   const [range, setRange] = useState("30D");
   const [builderSaved, setBuilderSaved] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setProduct(null);
-    setSimilar([]);
-    setRealHistory(null);
+  // Cache-first lookup: once the catalog has loaded, a product already in
+  // it never touches Firestore at all — this is what makes navigating
+  // Products -> Details -> Back instant instead of re-fetching. The
+  // getProduct() fallback only fires for a product genuinely missing from
+  // the cache (e.g. a very fresh admin add opened via a direct link before
+  // this tab's delta sync has caught up), and only after the catalog has
+  // finished its own first load.
+  const cachedProduct = useMemo(() => cachedProducts.find((p) => p.id === id) || null, [cachedProducts, id]);
+  const product = cachedProduct || fallbackProduct;
 
-    // Render the product as soon as its document is available. Price history
-    // and similar products are secondary data and should never block the
-    // product detail screen—especially when returning with the browser Back
-    // button. The data layer caches these requests as well.
+  useEffect(() => {
+    setFallbackProduct(null);
+    if (!id || catalogLoading || cachedProduct) return;
+
+    let cancelled = false;
     getProduct(id)
       .then((p) => {
-        if (cancelled) return;
-        setProduct(p);
-        if (!p) return;
+        if (!cancelled) setFallbackProduct(p);
+      })
+      .catch((err) => console.error("Failed to load product", err));
+    return () => { cancelled = true; };
+  }, [id, catalogLoading, cachedProduct]);
 
-        getPriceHistory(id)
-          .then((historyData) => {
-            if (!cancelled) setRealHistory(historyData);
-          })
-          .catch((err) => {
-            console.error("Failed to load price history", err);
-            if (!cancelled) setRealHistory([]);
-          });
+  // Similar products come straight from the already-loaded cache — no
+  // separate Firestore query per product page.
+  const similar = useMemo(() => {
+    if (!product) return [];
+    return cachedProducts.filter((p) => p.cat === product.cat && p.id !== product.id).slice(0, 4);
+  }, [cachedProducts, product]);
 
-        getProductsByCategory(p.cat)
-          .then((sameCategory) => {
-            if (!cancelled) setSimilar(sameCategory.filter((x) => x.id !== p.id).slice(0, 4));
-          })
-          .catch((err) => console.error("Failed to load similar products", err));
+  // Price history is real per-product time-series data that doesn't belong
+  // in the catalog cache — it stays a direct, per-product Firestore read.
+  useEffect(() => {
+    setRealHistory(null);
+    if (!id) return;
+    let cancelled = false;
+    getPriceHistory(id)
+      .then((historyData) => {
+        if (!cancelled) setRealHistory(historyData);
       })
       .catch((err) => {
-        console.error("Failed to load product", err);
-        if (!cancelled) setProduct(null);
+        console.error("Failed to load price history", err);
+        if (!cancelled) setRealHistory([]);
       });
-
     return () => { cancelled = true; };
   }, [id]);
 
-  // Keep the wishlist button marked after navigating away and coming back.
-  useEffect(() => {
-    if (!user || !id) {
-      setSaved(false);
-      return;
-    }
-    let cancelled = false;
-    getWishlist(user.uid)
-      .then((wish) => {
-        if (!cancelled) setSaved(wish.some((item) => item.productId === id));
-      })
-      .catch((err) => console.error("Failed to load wishlist state", err));
-    return () => { cancelled = true; };
-  }, [user, id]);
+  // Wishlist state now comes from WishlistContext (fetched once per
+  // login, shared across every page) instead of a per-mount getWishlist()
+  // call here.
+  const saved = isWishlisted(id);
 
   useEffect(() => {
     if (!id) return;
@@ -110,8 +110,7 @@ export default function ProductDetail() {
 
   async function handleWishlist() {
     if (!user || saved) return;
-    await addToWishlist(user.uid, product.id);
-    setSaved(true);
+    await toggleWishlist(product.id);
   }
 
   function handleUseInBuilder() {

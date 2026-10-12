@@ -1,20 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getProducts } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL } from "@/lib/catalog";
 import CategoryIcon from "@/components/CategoryIcon";
 
 export default function CategoriesPage() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getProducts().then((p) => {
-      setProducts(p);
-      setLoading(false);
-    });
-  }, []);
+  const { products, loading } = useCatalog();
 
   const cats = Object.keys(CAT_LABEL);
 

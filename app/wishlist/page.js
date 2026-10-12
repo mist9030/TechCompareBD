@@ -1,35 +1,33 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/AuthContext";
-import { getWishlist, removeFromWishlist, getProduct } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
+import { useWishlist } from "@/lib/WishlistContext";
 import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
 import { lowest, getProductImage } from "@/lib/catalog";
 
 export default function WishlistPage() {
   const { user, loading } = useAuth();
-  const [items, setItems] = useState([]);
-  const [busy, setBusy] = useState(true);
+  const { products: cachedProducts, loading: catalogLoading } = useCatalog();
+  const { entries, loading: wishlistLoading, remove } = useWishlist();
+  const busy = wishlistLoading;
 
-  useEffect(() => {
-    if (!user) { setBusy(false); return; }
-    (async () => {
-      const wish = await getWishlist(user.uid);
-      const withProducts = await Promise.all(
-        wish.map(async (w) => ({ wishId: w.id, product: await getProduct(w.productId) }))
-      );
-      setItems(withProducts.filter((x) => x.product));
-      setBusy(false);
-    })();
-  }, [user]);
+  // Wishlist entries come from WishlistContext (fetched once per login,
+  // shared across every page — see lib/WishlistContext.js). Product
+  // details for each entry are resolved from the already-loaded catalog
+  // cache below — no per-item getDoc(), and no re-fetch of the wishlist
+  // list itself on every visit to this page.
+  const items = useMemo(() => {
+    if (!entries.length) return [];
+    const byId = new Map(cachedProducts.map((p) => [p.id, p]));
+    return entries
+      .map(({ id: wishId, productId }) => ({ wishId, product: byId.get(productId) || null }))
+      .filter((x) => x.product);
+  }, [entries, cachedProducts]);
 
-  async function remove(wishId) {
-    await removeFromWishlist(wishId);
-    setItems((prev) => prev.filter((x) => x.wishId !== wishId));
-  }
-
-  if (loading || busy) return <div className="max-w-[1240px] mx-auto px-7 py-10 text-ink-soft text-sm">Loading…</div>;
+  if (loading || busy || catalogLoading) return <div className="max-w-[1240px] mx-auto px-7 py-10 text-ink-soft text-sm">Loading…</div>;
 
   if (!user) {
     return (

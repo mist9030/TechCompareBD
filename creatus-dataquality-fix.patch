@@ -1,0 +1,172 @@
+diff --git a/lib/ingestion/adapters/creatus.js b/lib/ingestion/adapters/creatus.js
+index 648b97a..b8babda 100644
+--- a/lib/ingestion/adapters/creatus.js
++++ b/lib/ingestion/adapters/creatus.js
+@@ -11,7 +11,7 @@
+ 
+ import * as cheerio from "cheerio";
+ import { parseBDTPrice, cleanText } from "../normalize.mjs";
+-import { fetchHtml, metaContent, parseSpecTable, parsePricePair, findLabeledLine } from "./shared.js";
++import { fetchHtml, metaContent, parseSpecTable, findLabeledLine, extractPriceBlock, guessBrandFromName } from "./shared.js";
+ 
+ const BASE_URL = "https://www.creatus.com.bd";
+ 
+@@ -72,7 +72,15 @@ export function parseProductHtml(html, url) {
+   const name = metaContent($, "og:title") || cleanText($("h1").first().text());
+   if (!name) return null;
+ 
+-  const brand = metaContent($, "product:brand") || findLabeledLine($, /^brand:/i);
++  // CONFIRMED live (2 real product pages fetched directly): Creatus never
++  // exposes brand via a `product:brand` meta tag or a "Brand:" labeled
++  // line on the main product info block — only "Stock:", "Model:", and
++  // "Product id:" appear there. Brand IS a real structured field on this
++  // site (it shows up as its own column in the page's "Quick Compare"
++  // widget), it's just not present where every other adapter looks for
++  // it, so falling back to matching a known brand name against the
++  // product's own title is the only reliable option here.
++  const brand = metaContent($, "product:brand") || findLabeledLine($, /^brand:/i) || guessBrandFromName(name);
+   const sourceProductId = metaContent($, "product:retailer_item_id") || findLabeledLine($, /^(sku|product code):/i);
+   const availabilityText = metaContent($, "product:availability") || findLabeledLine($, /^(stock|availability):/i);
+   const mainImage = metaContent($, "og:image");
+@@ -80,8 +88,12 @@ export function parseProductHtml(html, url) {
+   const metaPrice = parseBDTPrice(metaContent($, "product:price:amount"));
+   const model = findLabeledLine($, /^model:/i);
+ 
+-  const priceBlockText = $(".price, #product .price, .product-info .price").first().text();
+-  let { price, previousPrice } = parsePricePair(priceBlockText);
++  // CONFIRMED live: Creatus product pages include a "Best <Category> Price
++  // List" sidebar/related-products widget that reuses the same `.price`
++  // class as the real product's own price — see extractPriceBlock()'s doc
++  // comment in shared.js for the full mechanism. This priority-ordered
++  // lookup (rather than one combined selector) is the fix.
++  let { price, previousPrice } = extractPriceBlock($);
+   if (price == null) price = metaPrice;
+ 
+   const specContainer = $('#tab-specification, .tab-specification, [id*="specification" i]').first();
+diff --git a/lib/ingestion/adapters/shared.js b/lib/ingestion/adapters/shared.js
+index c8efbf1..3e6d3df 100644
+--- a/lib/ingestion/adapters/shared.js
++++ b/lib/ingestion/adapters/shared.js
+@@ -22,25 +22,39 @@ export const KNOWN_SPEC_LABELS = [...new Set(Object.values(SPEC_LABEL_MAP).flatM
+ 
+ /**
+  * Shared fetch wrapper: descriptive UA (we identify ourselves rather than
+- * spoofing a browser), one retry on transient failure. Every adapter's
+- * discovery/parse functions should go through this rather than calling
+- * `fetch` directly, so retry/UA policy changes happen in one place.
++ * spoofing a browser), one retry on transient failure, and a hard timeout.
++ *
++ * The sync loop in lib/ingestion/ingest.js is fully sequential — one
++ * category/page/product at a time — so a single request that never
++ * resolves (rate-limiting, a silently dropped connection, anti-bot
++ * blocking) would otherwise stall the *entire* run forever with no way to
++ * recover short of killing the dev server. Node's built-in fetch has no
++ * default timeout, so this has to be explicit: an AbortController fires
++ * after `timeoutMs`, which fetch() surfaces as an AbortError — the same
++ * `retries` / backoff path below applies to it as any other failure, and
++ * if it exhausts retries, the caller's existing try/catch (per-product in
++ * ingest.js) logs it as a normal "failed" item and the loop moves on.
+  */
+-export async function fetchHtml(url, { retries = 1 } = {}) {
++export async function fetchHtml(url, { retries = 1, timeoutMs = 15000 } = {}) {
+   let lastErr;
+   for (let attempt = 0; attempt <= retries; attempt++) {
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), timeoutMs);
+     try {
+       const res = await fetch(url, {
+         headers: {
+           "User-Agent": "TechCompareBD-Ingestion/1.0 (+https://techcompare.example/bot)",
+           Accept: "text/html",
+         },
++        signal: controller.signal,
+       });
+       if (!res.ok) throw new Error(`Fetch failed (${res.status}) for ${url}`);
+       return await res.text();
+     } catch (err) {
+-      lastErr = err;
++      lastErr = err?.name === "AbortError" ? new Error(`Timed out after ${timeoutMs}ms fetching ${url}`) : err;
+       if (attempt < retries) await new Promise((r) => setTimeout(r, 400));
++    } finally {
++      clearTimeout(timer);
+     }
+   }
+   throw lastErr;
+@@ -336,3 +350,77 @@ export function findLabeledLine($, labelPattern) {
+   if (!el.length) return null;
+   return cleanText(el.text()).replace(labelPattern, "").trim() || null;
+ }
++
++/**
++ * Extracts a product's own price block, trying selectors in strict
++ * priority order rather than one combined CSS selector.
++ *
++ * Why this matters: `$(".price, #product .price, .product-info .price").first()`
++ * (the pattern every adapter originally used) does NOT try the more
++ * specific selectors first — a combined CSS selector list is evaluated as
++ * "any element matching any of these", and `.first()` then returns
++ * whichever match comes FIRST IN DOCUMENT ORDER, regardless of which
++ * branch of the selector matched it. On a page-builder theme (Journal,
++ * used by Creatus and others) that renders sidebar/related-product
++ * blocks — "Best Processor Price List", "Quick Compare", etc. — those
++ * blocks reuse the same `.price` class as the real product price, and if
++ * one happens to sit earlier in the raw HTML than the actual product's
++ * price (common with page-builder "content-top" regions, independent of
++ * where it's visually positioned via CSS), the bare `.price` fallback
++ * silently wins and every product on the page-builder's featured list
++ * reports the SAME wrong price. Confirmed live on Creatus: two different
++ * real product pages both showed a "Best ... Price List" widget with
++ * other products' prices reusing `.price`.
++ *
++ * Trying selectors as an ordered sequence — each one an independent,
++ * SCOPED lookup — means a more specific selector's `.first()` only ever
++ * searches within its own scope, so an unrelated widget elsewhere on the
++ * page can't win just by DOM position. Only falls through to a later
++ * (broader) selector if the current one yields no PARSEABLE price at all.
++ */
++export function extractPriceBlock($, selectors = ["#product .price", ".product-info .price", "#content .price", ".price"]) {
++  for (const selector of selectors) {
++    const text = $(selector).first().text();
++    const parsed = parsePricePair(text);
++    if (parsed.price != null) return parsed;
++  }
++  return { price: null, previousPrice: null };
++}
++
++// Longest-first so multi-word brands (e.g. "Western Digital") are matched
++// before a shorter substring could steal the match. Scoped to brands
++// actually relevant to this catalog's categories (cpu/gpu/ram/ssd/mobo/
++// psu/case/monitor/laptop/peripheral) — not an exhaustive global list.
++const KNOWN_BRANDS = [
++  "Western Digital", "Cooler Master", "Silicon Power", "Team Group", "TeamGroup",
++  "G.Skill", "GSkill", "Fractal Design", "SilverStone", "be quiet!", "1stPlayer",
++  "PowerColor", "Sapphire", "Gainward", "Inno3D", "Sparkle", "Zotac", "Palit",
++  "Colorful", "Manli", "Galax", "EVGA", "XFX", "Asus", "ASRock", "Gigabyte",
++  "MSI", "AMD", "Intel", "NZXT", "Lian Li", "Deepcool", "Antec", "Thermaltake",
++  "Phanteks", "Segotep", "Corsair", "Kingston", "Crucial", "Patriot", "Adata",
++  "ADATA", "Apacer", "Transcend", "Samsung", "Seagate", "Toshiba", "SanDisk",
++  "Lexar", "Value Top", "Walton", "Xiaomi", "Redmi", "Dell", "HP", "Lenovo",
++  "Acer", "Apple", "ViewSonic", "BenQ", "Philips", "AOC", "LG", "Logitech",
++  "Razer", "HyperX", "SteelSeries", "Redragon", "Fantech", "Havit", "A4Tech",
++  "A4tech", "Rapoo", "Gamdias", "Cougar",
++].sort((a, b) => b.length - a.length);
++
++/**
++ * Last-resort brand fallback: matches a known brand name at/near the
++ * start of the product name. Only used when a page has no other brand
++ * signal at all (no product:brand meta, no "Brand:" line) — confirmed
++ * live on Creatus, which exposes brand as a structured column in its
++ * "Quick Compare" widget but never on the main product info block
++ * itself, so name-matching is the only reliable source here.
++ */
++export function guessBrandFromName(name) {
++  if (!name) return null;
++  const lower = name.toLowerCase();
++  for (const brand of KNOWN_BRANDS) {
++    if (lower.startsWith(brand.toLowerCase() + " ")) return brand;
++  }
++  for (const brand of KNOWN_BRANDS) {
++    if (lower.includes(" " + brand.toLowerCase() + " ") || lower.includes(" " + brand.toLowerCase())) return brand;
++  }
++  return null;
++}

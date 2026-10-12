@@ -1,21 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getProducts } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL, lowest } from "@/lib/catalog";
 import ProductCard from "@/components/ProductCard";
 import CategoryIcon from "@/components/CategoryIcon";
 
 export default function Home() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getProducts().then((p) => {
-      setProducts(p);
-      setLoading(false);
-    });
-  }, []);
+  const { products, loading } = useCatalog();
 
   const deals = [...products].filter((p) => p.discount > 0).sort((a, b) => b.discount - a.discount).slice(0, 4);
   const cats = Object.keys(CAT_LABEL);
