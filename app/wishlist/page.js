@@ -6,7 +6,7 @@ import { useCatalog } from "@/lib/CatalogContext";
 import { useWishlist } from "@/lib/WishlistContext";
 import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
-import { lowest, getProductImage } from "@/lib/catalog";
+import { lowest, getProductImage, productPriceText } from "@/lib/catalog";
 
 export default function WishlistPage() {
   const { user, loading } = useAuth();
@@ -74,8 +74,7 @@ export default function WishlistPage() {
                   <div className="text-[12px] text-ink-soft">{product.offers?.length || 0} shop{(product.offers?.length || 0) === 1 ? "" : "s"} tracked</div>
                 </Link>
                 <div className="shrink-0 pr-8">
-                  {low ? <PriceChip price={low.price} size="lg" /> : <span className="badge badge-outofstock">Out of stock</span>}
-                </div>
+                  {low ? <PriceChip price={low.price} size="lg" /> : <span className="badge badge-muted">{productPriceText(product)}</span>}                </div>
                 <button onClick={() => remove(wishId)} className="absolute top-3 right-3 text-ink-soft text-xs bg-white/90 rounded-full w-7 h-7 flex items-center justify-center border border-line-soft hover:text-red" aria-label="Remove from wishlist">✕</button>
               </div>
             );

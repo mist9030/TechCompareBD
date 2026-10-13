@@ -5,8 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { useCatalog } from "@/lib/CatalogContext";
-import { CAT_LABEL } from "@/lib/catalog";
-
+import { CAT_LABEL, productPriceText } from "@/lib/catalog";
 const CATEGORY_ORDER = [
   "cpu",
   "mobo",
@@ -67,8 +66,9 @@ function getProductMinPrice(product) {
 
   let min = Infinity;
   for (const offer of offers) {
-    const price = Number(offer?.price);
-    if (Number.isFinite(price) && price >= 0 && price < min) {
+    // Only real positive prices count- null/0 means "no price announced".
+const price = offer?.price == null ? NaN : Number(offer.price);
+if (Number.isFinite(price) && price > 0 && price < min) {
       min = price;
     }
   }
@@ -1776,8 +1776,7 @@ function ProductsInner() {
                                 badge
                                 badge-outofstock
                               ">
-                                Price unavailable
-                              </span>
+                                {productPriceText(product)}                              </span>
 
                             )}
 

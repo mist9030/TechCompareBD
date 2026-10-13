@@ -2,8 +2,7 @@
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useCatalog } from "@/lib/CatalogContext";
-import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
-import PriceChip from "@/components/PriceChip";
+import { CAT_LABEL, fmt, lowest, productPriceText } from "@/lib/catalog";import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
 
 function CompareInner() {
@@ -99,7 +98,8 @@ function CompareInner() {
                 <td className="p-3 text-[12.5px] font-semibold text-ink-soft">Best price</td>
                 {selected.map((p) => {
                   const low = lowest(p);
-                  return <td key={p.id} className="p-3 text-center">{low ? <PriceChip price={low.price} /> : "—"}</td>;
+                  return <td key={p.id} className="p-3 text-center">{low ? <PriceChip price={low.price} /> : <span className="text-ink-soft text-[12.5px]">{productPriceText(p)}</span>}
+</td>;
                 })}
               </tr>
               <tr className="border-t border-line-soft">

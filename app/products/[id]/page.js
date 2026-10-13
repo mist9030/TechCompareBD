@@ -6,7 +6,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { getProduct, getPriceHistory } from "@/lib/data";
 import { useCatalog } from "@/lib/CatalogContext";
 import { useWishlist } from "@/lib/WishlistContext";
-import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage } from "@/lib/catalog";
+import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage, hasPrice, offerPriceText, productPriceText, offerUrl } from
+"@/lib/catalog";
 import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
 import { useAuth } from "@/lib/AuthContext";
 import PriceChip from "@/components/PriceChip";
@@ -98,14 +99,22 @@ export default function ProductDetail() {
       return formatRealHistory(realHistory).slice(-RANGE_DAYS[range]);
     }
     const low = lowest(product);
-    return genHistory(low ? low.price : 10000, RANGE_DAYS[range]);
+if (!low) return []; // no price announced-> don't draw a made-up trend
+return genHistory(low.price, RANGE_DAYS[range]);
   }, [product, realHistory, range]);
   const isRealHistory = Boolean(realHistory && realHistory.length > 1);
 
   if (!product) return <div className="max-w-[1240px] mx-auto px-7 py-10 text-ink-soft text-sm">Loading…</div>;
 
   const low = lowest(product);
-  const offersSorted = [...(product.offers || [])].sort((a, b) => a.price - b.price);
+// Priced offers first (cheapest first); "price not announced" offers last.
+const offersSorted = [...(product.offers || [])].sort(
+(a, b) => (hasPrice(a) ? a.price : Infinity)- (hasPrice(b) ? b.price : Infinity)
+);
+// Links to this product's original page on each shop's own website.
+const sourceLinks = offersSorted
+.map((offer) => ({ offer, url: offerUrl(offer) }))
+.filter((x) => x.url);
   const groups = SPEC_GROUPS[product.cat] || [];
 
   async function handleWishlist() {
@@ -135,7 +144,8 @@ export default function ProductDetail() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-8 mb-10">
-        <div className="thumb">
+<div>
+<div className="thumb">
           {getProductImage(product) ? (
             <img
               src={getProductImage(product)}
@@ -152,15 +162,32 @@ export default function ProductDetail() {
           ) : null}
           <div className={`${getProductImage(product) ? "hidden" : ""} thumb-icon`}>
             <CategoryIcon cat={product.cat} size={90} />
-          </div>
-        </div>
+</div>
+</div>
+{/* Open the product on the shop's original website */}
+{sourceLinks.length > 0 && (
+<div className="mt-3 flex flex-col gap-2">
+{sourceLinks.map(({ offer, url }, i) => (
+<a
+key={`${offer.shop}-${i}`}
+
+href={url}
+target="_blank"
+rel="noopener noreferrer"
+className={`btn w-full justify-center ${i === 0 ? "btn-primary" : "btn-ghost"}`}>
+{i === 0 ? "Open this product on the original website" : "Also open on"} &middot; {offer.shopName || offer.shop} &rarr;
+</a>
+))}
+</div>
+)}
+</div>
         <div>
           <div className="text-[12px] font-semibold text-ink-soft uppercase tracking-wide mb-2">{CAT_LABEL[product.cat]} · {product.brand}</div>
           <h1 className="text-2xl mb-1">{product.name}</h1>
           <div className="text-[12.5px] text-ink-soft mb-4">Model: {product.model}</div>
           <div className="flex items-center gap-3 mb-5">
-            {low ? <PriceChip price={low.price} size="lg" /> : <span className="badge badge-outofstock">Currently unavailable</span>}
-            {product.discount > 0 && <span className="badge badge-discount">-{product.discount}%</span>}
+            {low ? <PriceChip price={low.price} size="lg" /> : <span className="badge badge-muted
+text-[13px]">{productPriceText(product)}</span>}            {product.discount > 0 && <span className="badge badge-discount">-{product.discount}%</span>}
           </div>
           <div className="flex gap-2 flex-wrap">
             <Link href={`/compare?ids=${product.id}`} className="btn btn-ghost btn-sm">Add to Compare</Link>
@@ -188,9 +215,18 @@ export default function ProductDetail() {
             <tbody>
               {offersSorted.map((o, i) => (
                 <tr key={o.shop} className="border-b border-line-soft last:border-0">
-                  <td className="p-3 font-semibold">{o.shopName || o.shop}</td>
-                  <td className="p-3"><PriceChip price={o.price} /> {i === 0 && <span className="badge badge-best ml-2">Best</span>}</td>
+                  <td className="p-3 font-semibold">
+{offerUrl(o) ? (
+<a href={offerUrl(o)} target="_blank" rel="noopener noreferrer" className="hover:underline">{o.shopName || o.shop}
+&rarr;</a>
+) : (o.shopName || o.shop)}
+</td>
                   <td className="p-3">
+{hasPrice(o) ? <PriceChip price={o.price} /> : <span className="text-ink-soft
+font-semibold">{offerPriceText(o)}</span>}
+{i === 0 && hasPrice(o) && <span className="badge badge-best ml-2">Best</span>}
+</td>   
+               <td className="p-3">
                     <span className={o.availability === "in_stock" ? "badge badge-stock" : "badge badge-outofstock"}>
                       {o.availability === "in_stock" ? "In stock" : "Out of stock"}
                     </span>

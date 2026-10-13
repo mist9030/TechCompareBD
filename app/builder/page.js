@@ -3,8 +3,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getBuild, saveBuild, updateBuild } from "@/lib/data";
 import { useCatalog } from "@/lib/CatalogContext";
-import { BUILD_SLOTS, CAT_LABEL, fmt, lowest, getProductImage } from "@/lib/catalog";
-import { checkCompatibility } from "@/lib/compat";
+import { BUILD_SLOTS, CAT_LABEL, fmt, lowest, getProductImage, hasPrice, productPriceText } from "@/lib/catalog";import { checkCompatibility } from "@/lib/compat";
 import { downloadBuildPDF } from "@/lib/pdf";
 import { useAuth } from "@/lib/AuthContext";
 import PriceChip from "@/components/PriceChip";
@@ -133,8 +132,7 @@ function BuilderInner() {
         let sum = 0, count = 0;
         slots.forEach((s) => {
           if (!s.product) return;
-          const offer = s.product.offers?.find((o) => o.shop === shop.id && o.availability === "in_stock");
-          if (offer) { sum += offer.price; count++; }
+          const offer = s.product.offers?.find((o) => o.shop === shop.id && o.availability === "in_stock" && hasPrice(o));          if (offer) { sum += offer.price; count++; }
         });
         return { shop, sum, count };
       })
@@ -148,8 +146,8 @@ function BuilderInner() {
     slots.forEach((s) => {
       if (!s.product) return;
       const cheapest = [...(s.product.offers || [])]
-        .filter((o) => o.availability === "in_stock")
-        .sort((a, b) => a.price - b.price)[0];
+        .filter((o) => o.availability === "in_stock" && hasPrice(o))
+.sort((a, b) => a.price- b.price)[0];
       if (cheapest) {
         sum += cheapest.price;
         picks.push({
@@ -390,7 +388,7 @@ function Picker({ cat, products, onPick, onClose }) {
                   <div className="text-[13.5px] font-semibold truncate">{p.name}</div>
                   <div className="text-[11.5px] text-ink-soft">{p.brand}</div>
                 </div>
-                {low && <PriceChip price={low.price} />}
+                {low ? <PriceChip price={low.price} /> : <span className="text-[11.5px] text-ink-soft">{productPriceText(p)}</span>}
               </button>
             );
           })}

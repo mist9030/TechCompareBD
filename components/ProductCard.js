@@ -2,8 +2,7 @@
 import Link from "next/link";
 import CategoryIcon from "./CategoryIcon";
 import PriceChip from "./PriceChip";
-import { CAT_LABEL, lowest, getProductImage } from "@/lib/catalog";
-
+import { CAT_LABEL, lowest, getProductImage, productPriceText } from "@/lib/catalog";
 export default function ProductCard({ product }) {
   const low = lowest(product);
   return (
@@ -31,7 +30,7 @@ export default function ProductCard({ product }) {
       </div>
       <div className="font-semibold text-[14.5px] leading-snug mb-2 line-clamp-2">{product.name}</div>
       <div className="flex items-center justify-between">
-        {low ? <PriceChip price={low.price} /> : <span className="badge badge-outofstock">Out of stock</span>}
+        {low ? <PriceChip price={low.price} /> : <span className="badge badge-muted">{productPriceText(product)}</span>}
         {product.discount > 0 && <span className="badge badge-discount">-{product.discount}%</span>}
       </div>
       <div className="text-[11.5px] text-ink-soft mt-2">
