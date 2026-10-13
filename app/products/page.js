@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -150,7 +150,10 @@ function ProductsInner() {
   const [compareIds, setCompareIds] = useState([]);
 
   const [sidebarSearch, setSidebarSearch] =
-    useState("");
+useState("");
+// Render only a page of cards at a time (thousands of cards = frozen tab).
+const PAGE_SIZE = 24;
+const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   /* ==========================================================
      Products now come from useCatalog() above — no per-page
@@ -417,8 +420,15 @@ function ProductsInner() {
      URL
      ========================================================== */
 
-  function updateUrl(overrides = {}) {
-    const state = {
+  // Start again from page 1 whenever the filters/search/sort change.
+useEffect(() => {
+setVisibleCount(PAGE_SIZE);
+}, [filtered]);
+const visible = useMemo(
+() => filtered.slice(0, visibleCount),
+[filtered, visibleCount]
+);
+function updateUrl(overrides = {}) {    const state = {
       q: search,
       categories:
         selectedCategories.join(","),
@@ -1490,10 +1500,8 @@ function ProductsInner() {
                     `
                 }
               >
-
-                {filtered.map(
-                  (product) => {
-
+{visible.map(
+(product) => {
                     const low =
                       getProductMinPrice(
                         product
@@ -1882,6 +1890,16 @@ function ProductsInner() {
               </div>
 
             )}
+            {!loading && filtered.length > visibleCount && (
+<div className="text-center mt-8">
+<button
+type="button"
+className="btn btn-ghost"
+onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}>
+Show more ({filtered.length- visibleCount} left)
+</button>
+</div>
+)}
 
         </main>
 

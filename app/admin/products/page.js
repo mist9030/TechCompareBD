@@ -82,8 +82,7 @@ export default function AdminProducts() {
           <tbody>
             {busy && <tr><td colSpan={6} className="text-adminink-soft p-4">Loading…</td></tr>}
             {!busy && products.length === 0 && <tr><td colSpan={6} className="text-adminink-soft p-4">No products yet. Seed the database or add one above.</td></tr>}
-            {products.map((p) => {
-              const low = lowest(p);
+            {products.slice(0, 100).map((p) => {              const low = lowest(p);
               return (
                 <tr key={p.id}>
                   <td className="font-semibold">{p.name}</td>

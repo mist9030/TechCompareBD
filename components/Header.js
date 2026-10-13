@@ -26,7 +26,9 @@ export default function Header() {
           <Link href="/categories" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Categories</Link>
           <Link href="/compare" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Compare</Link>
           <Link href="/builder" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">PC Builder</Link>
-          <Link href="/history" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Price History</Link>
+{user && (
+<Link href="/builds" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">My Builds</Link>
+)}          <Link href="/history" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Price History</Link>
           <Link href="/deals" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Deals</Link>
           <Link href="/guides" className="px-2.5 py-2 rounded-md hover:text-pcb-dark hover:bg-pcb-tint">Guides</Link>
           {isAdmin && (
