@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getProducts, addProduct, updateProduct, deleteProduct, getShops } from "@/lib/data";
-import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
+import { getProducts, addProduct, updateProduct, deleteProduct, getShops, purgeDeletedProducts } from "@/lib/data";import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
 
 const emptyForm = { cat: "cpu", brand: "", name: "", model: "", discount: 0, specsText: "{}", offers: [] };
 
@@ -63,8 +62,14 @@ export default function AdminProducts() {
     load();
   }
 
-  async function remove(id) {
-    if (!confirm("Delete this product?")) return;
+  async function purge() {
+if (!confirm("Permanently erase all deleted products (and their price history) from Firestore?")) return;
+const n = await purgeDeletedProducts();
+alert(`${n} product(s) permanently erased.`);
+load();
+}
+async function remove(id) {
+if (!confirm("Delete this product?")) return;
     await deleteProduct(id);
     load();
   }
@@ -73,8 +78,10 @@ export default function AdminProducts() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-display">Products</h1>
-        <button onClick={openNew} className="btn btn-primary btn-sm">+ New Product</button>
-      </div>
+        <div className="flex gap-2">
+<button onClick={purge} className="btn btn-ghost btn-sm">Purge deleted</button>
+<button onClick={openNew} className="btn btn-primary btn-sm">+ New Product</button>
+</div>      </div>
 
       <div className="admin-card overflow-x-auto">
         <table className="admin-table">

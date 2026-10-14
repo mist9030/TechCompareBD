@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   getShops,
   addShop,
+  deleteShopCascade,
   deleteShop,
   queueScrapeRun,
 } from "@/lib/data";
@@ -179,15 +180,15 @@ export default function AdminShops() {
   async function remove(id) {
     if (
       !confirm(
-        "Remove this shop? Existing product offers referencing it will remain but show a stale shop id."
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await deleteShop(id);
-      await load();
+        "Remove this shop AND its products? Products sold only by this shop are deleted; products that also have other shops just lose this shop's offer."
+)
+) {
+return;
+}
+try {
+const stats = await deleteShopCascade(id);
+alert(`Shop removed. ${stats.removedProducts} product(s) deleted, ${stats.updatedProducts} product(s) updated.`);
+await load();
     } catch (err) {
       console.error(
         "Failed to remove shop:",
