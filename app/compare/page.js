@@ -1,6 +1,7 @@
 "use client";
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL, fmt, lowest, productPriceText } from "@/lib/catalog";import PriceChip from "@/components/PriceChip";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -40,8 +41,8 @@ function CompareInner() {
   return (
     <div className="max-w-[1240px] mx-auto px-4 md:px-7 py-8">
       <h1 className="text-2xl mb-1">Compare products</h1>
-      <p className="text-ink-soft text-[13.5px] mb-6">Pick up to 4 products to compare specifications and price across shops.</p>
-
+      <p className="text-ink-soft text-[13.5px] mb-6">Pick up to 4 products to compare specifications and price across shops. <Link
+href="/compare/builds" className="text-pcb-dark font-semibold">Compare my saved builds &rarr;</Link></p>
       {ids.length < 4 && (
         <div className="relative mb-8 max-w-md">
           <input
