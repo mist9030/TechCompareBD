@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { useCatalog } from "@/lib/CatalogContext";
+import { useAuth } from "@/lib/AuthContext";
+import { useWishlist } from "@/lib/WishlistContext";
 import { CAT_LABEL, productPriceText } from "@/lib/catalog";
 const CATEGORY_ORDER = [
   "cpu",
@@ -100,7 +102,8 @@ function ProductsInner() {
      ---------------------------------------------------------- */
 
   const { products, loading } = useCatalog();
-
+const { user } = useAuth();
+const { isWishlisted, toggle: toggleWishlist } = useWishlist();
   const [search, setSearch] = useState(
     params.get("q") || ""
   );
@@ -1660,9 +1663,14 @@ function updateUrl(overrides = {}) {    const state = {
                               hover:border-pcb
                             "
                             aria-label="Add to wishlist"
+onClick={() =>
+user
+? toggleWishlist(product.id).catch((err) => console.error(err))
+: router.push("/login")
+}
                             title="Add to wishlist"
                           >
-                            ♡
+                            {isWishlisted(product.id) ? "♥" : "♡"}
                           </button>
 
                         </div>

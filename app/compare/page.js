@@ -1,6 +1,5 @@
 "use client";
-import { Suspense, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL, fmt, lowest, productPriceText } from "@/lib/catalog";import PriceChip from "@/components/PriceChip";
@@ -11,6 +10,24 @@ function CompareInner() {
   const router = useRouter();
   const { products: all } = useCatalog();
   const [ids, setIds] = useState((params.get("ids") || "").split(",").filter(Boolean));
+// No ?ids= in the URL-> restore the last compare list; always remember it.
+useEffect(() => {
+try {
+if (!params.get("ids")) {
+const saved = JSON.parse(window.localStorage.getItem("techcompare:compare-ids") || "[]");
+if (Array.isArray(saved) && saved.length) setIds(saved.slice(0, 4));
+}
+} catch (err) {
+console.error("Failed to restore compare list", err);
+}
+}, [params]);
+useEffect(() => {
+try {
+window.localStorage.setItem("techcompare:compare-ids", JSON.stringify(ids));
+} catch (err) {
+console.error("Failed to save compare list", err);
+}
+}, [ids]);
   const [query, setQuery] = useState("");
 
   const selected = ids.map((id) => all.find((p) => p.id === id)).filter(Boolean);

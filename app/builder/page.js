@@ -124,6 +124,8 @@ function BuilderInner() {
   });
 
   const total = slots.reduce((sum, s) => sum + (s.lowestPrice || 0), 0);
+// Parts picked but with no announced price are not part of the total.
+const unpricedCount = slots.filter((s) => s.product && s.lowestPrice == null).length;
   const filledCount = slots.filter((s) => s.product).length;
 
   const shopTotals = useMemo(() => {
@@ -333,7 +335,11 @@ function BuilderInner() {
             <div className="text-2xl font-display font-bold mb-1">{fmt(total)}</div>
             {budget && <div className={`text-[12.5px] mb-3 ${total > Number(budget) ? "text-red" : "text-pcb-dark"}`}>{total > Number(budget) ? `৳${(total - budget).toLocaleString()} over budget` : `৳${(budget - total).toLocaleString()} under budget`}</div>}
             <div className="text-[12.5px] text-ink-soft mb-4">{filledCount} / {slots.length} components selected</div>
-
+{unpricedCount > 0 && (
+<div className="text-[12px] text-gold mb-3">
+Total excludes {unpricedCount} part{unpricedCount === 1 ? "" : "s"} with no announced price.
+</div>
+)}
             {user ? (
               <button onClick={handleSave} disabled={saving || filledCount === 0} className="btn btn-primary btn-block mb-2">
                 {saved ? (editingBuildId ? "Updated ✓" : "Saved ✓") : saving ? (editingBuildId ? "Updating…" : "Saving…") : (editingBuildId ? "Update Build" : "Save Build")}

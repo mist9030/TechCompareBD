@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getProduct, getPriceHistory } from "@/lib/data";
 import { useCatalog } from "@/lib/CatalogContext";
@@ -16,6 +16,7 @@ import ProductCard from "@/components/ProductCard";
 
 export default function ProductDetail() {
   const { id } = useParams();
+  const router = useRouter();
   const { user } = useAuth();
   const { products: cachedProducts, loading: catalogLoading } = useCatalog();
   const { isWishlisted, toggle: toggleWishlist } = useWishlist();
@@ -122,7 +123,23 @@ const sourceLinks = offersSorted
     await toggleWishlist(product.id);
   }
 
-  function handleUseInBuilder() {
+  function addToCompare() {
+let list = [];
+try {
+list = JSON.parse(window.localStorage.getItem("techcompare:compare-ids") || "[]");
+if (!Array.isArray(list)) list = [];
+} catch {
+list = [];
+}
+if (!list.includes(product.id)) list = [...list, product.id].slice(-4); // keep newest 4
+try {
+window.localStorage.setItem("techcompare:compare-ids", JSON.stringify(list));
+} catch (err) {
+console.error("Failed to save compare list", err);
+}
+router.push(`/compare?ids=${list.join(",")}`);
+}
+function handleUseInBuilder() {
     if (!product?.id || !BUILD_SLOTS.includes(product.cat)) return;
 
     const key = user?.uid ? `techcompare:pc-builder:${user.uid}` : "techcompare:pc-builder:guest";
@@ -190,8 +207,7 @@ className={`btn w-full justify-center ${i === 0 ? "btn-primary" : "btn-ghost"}`}
 text-[13px]">{productPriceText(product)}</span>}            {product.discount > 0 && <span className="badge badge-discount">-{product.discount}%</span>}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Link href={`/compare?ids=${product.id}`} className="btn btn-ghost btn-sm">Add to Compare</Link>
-            <button onClick={handleWishlist} disabled={!user || saved} className="btn btn-ghost btn-sm">
+            <button onClick={addToCompare} className="btn btn-ghost btn-sm">Add to Compare</button>            <button onClick={handleWishlist} disabled={!user || saved} className="btn btn-ghost btn-sm">
               {saved ? "Added to wishlist" : "❤ Add to Wishlist"}
             </button>
             {BUILD_SLOTS.includes(product.cat) && (
