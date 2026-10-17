@@ -12,7 +12,7 @@ const STATUS = {
   ok: ["badge badge-ok", "Compatible"],
   warning: ["badge badge-warning", "Warnings"],
   error: ["badge badge-error", "Problems"],
-  none: ["badge badge-muted", "Not enough parts"],
+  none: ["badge badge-muted", "Nothing to check yet"],
 };
 
 function CompareBuildsInner() {

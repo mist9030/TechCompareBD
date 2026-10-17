@@ -108,6 +108,14 @@ const { isWishlisted, toggle: toggleWishlist } = useWishlist();
     params.get("q") || ""
   );
 
+  // The header search bar navigates to /products?q=... while this page is
+  // already mounted, so state read from the URL once is not enough:
+  // follow the URL whenever ?q= changes.
+  const urlQuery = params.get("q") || "";
+  useEffect(() => {
+    setSearch(urlQuery);
+  }, [urlQuery]);
+
   const [selectedCategories, setSelectedCategories] =
     useState(() => {
       const value = params.get("categories");
@@ -275,11 +283,10 @@ const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
             ""
         ).toLowerCase();
 
-        return (
-          name.includes(searchValue) ||
-          brand.includes(searchValue) ||
-          category.includes(searchValue)
-        );
+        // Every word must appear somewhere in name/brand/model/category
+        // ("ryzen 5600" finds "Ryzen 5 5600X"; word order doesn't matter).
+        const haystack = `${name} ${brand} ${category} ${String(product.model || "").toLowerCase()}`;
+        return searchValue.split(/\s+/).every((word) => haystack.includes(word));
       });
     }
 

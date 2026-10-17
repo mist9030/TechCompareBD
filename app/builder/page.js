@@ -312,7 +312,7 @@ const unpricedCount = slots.filter((s) => s.product && s.lowestPrice == null).le
           {shopTotals.length > 0 && (
             <div className="mt-6">
               <h2 className="text-[15px] mb-2">Buy everything from one shop</h2>
-              <div className="card overflow-hidden">
+              <div className="card overflow-x-auto">
                 <table className="w-full text-[13px]">
                   <thead><tr className="border-b border-line text-left text-ink-soft text-[11px] uppercase"><th className="p-2.5">Shop</th><th className="p-2.5">Total</th></tr></thead>
                   <tbody>
