@@ -5,6 +5,7 @@ import {
   getShops,
   addShop,
   deleteShopCascade,
+  wipeProducts,
   deleteShop,
   queueScrapeRun,
 } from "@/lib/data";
@@ -81,6 +82,7 @@ export default function AdminShops() {
 
   const [syncResult, setSyncResult] =
     useState(null);
+  const [resetting, setResetting] = useState(null); // shop id being wiped
 
   /*
    * Local last-run values.
@@ -176,6 +178,30 @@ export default function AdminShops() {
   // ==========================================================
   // REMOVE SHOP
   // ==========================================================
+
+  async function resetProducts(s) {
+    if (
+      !confirm(
+        `PERMANENTLY delete every product of "${s.name}" from the database?\n\n` +
+          "Products that only this shop sells are erased (with their price history). Products that other shops also sell just lose this shop's offer.\n" +
+          "Saved builds / wishlist entries that use erased products will lose those parts.\n" +
+          "Afterwards press Sync on this shop to scrape it again from scratch."
+      )
+    ) {
+      return;
+    }
+    if (window.prompt("Type DELETE to confirm") !== "DELETE") return;
+    setResetting(s.id);
+    try {
+      const st = await wipeProducts({ shopId: s.id });
+      alert(`Done. ${st.deleted} product(s) erased, ${st.updated} product(s) kept (other shops).`);
+    } catch (err) {
+      console.error("Failed to reset shop products", err);
+      alert("Failed: " + (err?.message || err));
+    } finally {
+      setResetting(null);
+    }
+  }
 
   async function remove(id) {
     if (
@@ -711,6 +737,15 @@ await load();
                     s.id
                       ? "Running..."
                       : "Simulate (Demo)"}
+                  </button>
+
+                  <button
+                    onClick={() => resetProducts(s)}
+                    disabled={isAnythingRunning || resetting !== null}
+                    className="btn btn-sm btn-danger"
+                    title="Permanently erase this shop's products so they can be scraped again"
+                  >
+                    {resetting === s.id ? "Erasing..." : "Reset products"}
                   </button>
 
                   {/* ==================================================

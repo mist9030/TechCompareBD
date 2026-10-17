@@ -109,9 +109,12 @@ return genHistory(low.price, RANGE_DAYS[range]);
 
   const low = lowest(product);
 // Priced offers first (cheapest first); "price not announced" offers last.
-const offersSorted = [...(product.offers || [])].sort(
-(a, b) => (hasPrice(a) ? a.price : Infinity)- (hasPrice(b) ? b.price : Infinity)
-);
+// In-stock priced offers first (cheapest first), then out-of-stock priced
+  // ones, then offers with no announced price.
+  const stockRank = (o) => (!hasPrice(o) ? 2 : o.availability === "in_stock" ? 0 : 1);
+  const offersSorted = [...(product.offers || [])].sort(
+    (a, b) => stockRank(a) - stockRank(b) || (hasPrice(a) ? a.price : 0) - (hasPrice(b) ? b.price : 0)
+  );
 // Links to this product's original page on each shop's own website.
 const sourceLinks = offersSorted
 .map((offer) => ({ offer, url: offerUrl(offer) }))
@@ -240,7 +243,9 @@ text-[13px]">{productPriceText(product)}</span>}            {product.discount > 
                   <td className="p-3">
 {hasPrice(o) ? <PriceChip price={o.price} /> : <span className="text-ink-soft
 font-semibold">{offerPriceText(o)}</span>}
-{i === 0 && hasPrice(o) && <span className="badge badge-best ml-2">Best</span>}
+{low && o === low && (
+                      <span className="badge badge-best ml-2">{o.availability === "in_stock" ? "Best" : "Lowest"}</span>
+                    )}
 </td>   
                <td className="p-3">
                     <span className={o.availability === "in_stock" ? "badge badge-stock" : "badge badge-outofstock"}>

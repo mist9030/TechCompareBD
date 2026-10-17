@@ -64,18 +64,19 @@ function isOfferInStock(offer) {
 
 function getProductMinPrice(product) {
   const offers = Array.isArray(product?.offers) ? product.offers : [];
-  if (!offers.length) return null;
 
-  let min = Infinity;
-  for (const offer of offers) {
-    // Only real positive prices count- null/0 means "no price announced".
-const price = offer?.price == null ? NaN : Number(offer.price);
-if (Number.isFinite(price) && price > 0 && price < min) {
-      min = price;
-    }
-  }
+  // Only real positive prices count - null/0 means "no price announced".
+  const priced = offers.filter((offer) => {
+    const price = offer?.price == null ? NaN : Number(offer.price);
+    return Number.isFinite(price) && price > 0;
+  });
+  if (!priced.length) return null;
 
-  return min === Infinity ? null : min;
+  // Same rule as lowest() in lib/catalog.js: an in-stock offer beats a
+  // cheaper out-of-stock one, so cards, sorting and the detail page agree.
+  const inStock = priced.filter(isOfferInStock);
+  const pool = inStock.length ? inStock : priced;
+  return Math.min(...pool.map((offer) => Number(offer.price)));
 }
 
 function formatPrice(price) {
@@ -1581,6 +1582,10 @@ function updateUrl(overrides = {}) {    const state = {
                                     object-contain
                                   "
                                   loading="lazy"
+                                referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                  }}
                                 />
 
                               ) : (

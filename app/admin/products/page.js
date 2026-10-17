@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useCatalog } from "@/lib/CatalogContext";
-import { addProduct, updateProduct, deleteProduct, purgeDeletedProducts } from "@/lib/data";
+import { addProduct, updateProduct, deleteProduct, purgeDeletedProducts, wipeProducts } from "@/lib/data";
 import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
 
 const emptyForm = { cat: "cpu", brand: "", name: "", model: "", discount: 0, specsText: "{}", offers: [] };
@@ -59,6 +59,25 @@ export default function AdminProducts() {
     setModal(null);
   }
 
+  async function wipeAll() {
+    if (
+      !confirm(
+        "PERMANENTLY delete EVERY product (all shops) and their price history?\n" +
+          "Saved builds / wishlist entries will lose their parts.\nThen run Sync on each shop to scrape again."
+      )
+    ) {
+      return;
+    }
+    if (window.prompt("Type DELETE to confirm") !== "DELETE") return;
+    try {
+      const st = await wipeProducts();
+      alert(`Done. ${st.deleted} product(s) erased.`);
+    } catch (err) {
+      console.error("Failed to wipe products", err);
+      alert("Failed: " + (err?.message || err));
+    }
+  }
+
   async function purge() {
 if (!confirm("Permanently erase all deleted products (and their price history) from Firestore?")) return;
 const n = await purgeDeletedProducts();
@@ -75,6 +94,7 @@ if (!confirm("Delete this product?")) return;
         <h1 className="text-xl font-display">Products</h1>
         <div className="flex gap-2">
 <button onClick={purge} className="btn btn-ghost btn-sm">Purge deleted</button>
+          <button onClick={wipeAll} className="btn btn-sm btn-danger">Delete ALL products</button>
 <button onClick={openNew} className="btn btn-primary btn-sm">+ New Product</button>
 </div>      </div>
 

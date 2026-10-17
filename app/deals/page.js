@@ -40,7 +40,7 @@ export default function DealsPage() {
   const biggestDrops = [...withDrop].sort((a, b) => b.drop.delta - a.drop.delta).slice(0, 4);
   const bestDiscounts = [...withDrop].sort((a, b) => b.drop.pct - a.drop.pct).slice(0, 4);
   const lowestToday = [...products]
-    .filter((p) => lowest(p))
+    .filter((p) => lowest(p)?.availability === "in_stock")
     .sort((a, b) => lowest(a).price - lowest(b).price)
     .slice(0, 4);
 
