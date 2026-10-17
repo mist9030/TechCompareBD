@@ -1,21 +1,19 @@
 "use client";
-import { useEffect, useState } from "react";
-import { getProducts, addProduct, updateProduct, deleteProduct, getShops, purgeDeletedProducts } from "@/lib/data";import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
+import { useState } from "react";
+import { useCatalog } from "@/lib/CatalogContext";
+import { addProduct, updateProduct, deleteProduct, purgeDeletedProducts } from "@/lib/data";
+import { CAT_LABEL, fmt, lowest } from "@/lib/catalog";
 
 const emptyForm = { cat: "cpu", brand: "", name: "", model: "", discount: 0, specsText: "{}", offers: [] };
 
 export default function AdminProducts() {
-  const [products, setProducts] = useState([]);
-  const [shops, setShops] = useState([]);
-  const [busy, setBusy] = useState(true);
+  // Read from the synced local catalog cache - no full Firestore read. After a
+  // write the catalog refreshes itself within a moment (meta listener).
+  const { products, shops, loading: busy } = useCatalog();
   const [modal, setModal] = useState(null); // null | 'new' | product object being edited
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
 
-  function load() {
-    Promise.all([getProducts(), getShops()]).then(([p, s]) => { setProducts(p); setShops(s); setBusy(false); });
-  }
-  useEffect(load, []);
 
   function openNew() {
     setForm(emptyForm);
@@ -59,19 +57,16 @@ export default function AdminProducts() {
     if (modal === "new") await addProduct(payload);
     else await updateProduct(modal.id, payload);
     setModal(null);
-    load();
   }
 
   async function purge() {
 if (!confirm("Permanently erase all deleted products (and their price history) from Firestore?")) return;
 const n = await purgeDeletedProducts();
 alert(`${n} product(s) permanently erased.`);
-load();
 }
 async function remove(id) {
 if (!confirm("Delete this product?")) return;
     await deleteProduct(id);
-    load();
   }
 
   return (

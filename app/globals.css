@@ -129,7 +129,7 @@ h1, h2, h3, .disp { font-family: 'Space Grotesk', sans-serif; font-weight: 600; 
 .header-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; flex: 1; max-width: 360px; background: var(--surface); }
 .header-search input { border: none; outline: none; font-size: 13px; width: 100%; font-family: inherit; background: transparent; }
 .header-search svg { color: var(--ink-soft); flex-shrink: 0; }
-@media (max-width: 1080px) { .header-search { display: none; } }
+/* .header-search visibility is controlled by Header.js (responsive classes) */
 
 .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .icon-btn:hover { border-color: var(--pcb); color: var(--pcb-dark); }

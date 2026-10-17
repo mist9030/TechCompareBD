@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { getProducts, updateProduct } from "@/lib/data";
+import { useState } from "react";
+import { updateProduct } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { CAT_LABEL } from "@/lib/catalog";
 
 // Brand is a plain string field on each Product (no separate Brand
@@ -10,20 +11,12 @@ import { CAT_LABEL } from "@/lib/catalog";
 // Brand entity that doesn't exist in the schema; "rename" is a bulk
 // update across every product carrying the old brand string.
 export default function AdminBrands() {
-  const [products, setProducts] = useState([]);
-  const [busy, setBusy] = useState(true);
+  // Read from the synced local catalog cache - no full Firestore read.
+  const { products, loading: busy } = useCatalog();
   const [editing, setEditing] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [saving, setSaving] = useState(false);
 
-  function load() {
-    setBusy(true);
-    getProducts().then((p) => {
-      setProducts(p);
-      setBusy(false);
-    });
-  }
-  useEffect(load, []);
 
   const brands = {};
   for (const p of products) {
@@ -44,7 +37,6 @@ export default function AdminBrands() {
     await Promise.all(affected.map((p) => updateProduct(p.id, { brand: renameValue.trim() })));
     setSaving(false);
     setEditing(null);
-    load();
   }
 
   return (
@@ -58,7 +50,7 @@ export default function AdminBrands() {
       {busy ? (
         <div className="text-adminink-soft text-sm">Loading…</div>
       ) : (
-        <div className="admin-card overflow-hidden">
+        <div className="admin-card overflow-x-auto">
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="border-b border-adminline text-left">

@@ -496,7 +496,7 @@ function HistoryInner() {
               Recorded changes
             </h3>
 
-            <div className="card overflow-hidden">
+            <div className="card overflow-x-auto">
 
               <table className="w-full text-[13px] border-collapse">
 

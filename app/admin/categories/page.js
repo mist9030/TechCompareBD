@@ -42,7 +42,7 @@ export default function AdminCategories() {
         <button className="btn btn-primary btn-sm">Add</button>
       </form>
 
-      <div className="admin-card overflow-hidden">
+      <div className="admin-card overflow-x-auto">
         <table className="admin-table">
           <thead><tr><th>Key</th><th>Name</th><th></th></tr></thead>
           <tbody>

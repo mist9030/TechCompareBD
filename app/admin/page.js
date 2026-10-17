@@ -1,21 +1,29 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getProducts, getShops, getScrapingLogs } from "@/lib/data";
+import { getScrapingLogs } from "@/lib/data";
+import { useCatalog } from "@/lib/CatalogContext";
 import { fmt } from "@/lib/catalog";
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState(null);
+  // Products/shops come from the already-synced local catalog cache (no extra
+  // Firestore reads); only the scraping logs are fetched here.
+  const { products, shops, loading } = useCatalog();
+  const [logs, setLogs] = useState(null);
 
   useEffect(() => {
-    Promise.all([getProducts(), getShops(), getScrapingLogs()]).then(([products, shops, logs]) => {
-      const totalOffers = products.reduce((s, p) => s + (p.offers?.length || 0), 0);
-      const lastLogs = logs.slice(0, 6);
-      const failedTotal = logs.reduce((s, l) => s + (l.failed || 0), 0);
-      setStats({ products: products.length, shops: shops.length, totalOffers, lastLogs, failedTotal, activeShops: shops.filter((s) => s.status === "active").length });
-    });
+    getScrapingLogs().then(setLogs).catch(() => setLogs([]));
   }, []);
 
-  if (!stats) return <div className="text-adminink-soft text-sm">Loading…</div>;
+  if (loading || !logs) return <div className="text-adminink-soft text-sm">Loading…</div>;
+
+  const stats = {
+    products: products.length,
+    shops: shops.length,
+    totalOffers: products.reduce((sum, p) => sum + (p.offers?.length || 0), 0),
+    lastLogs: logs.slice(0, 6),
+    failedTotal: logs.reduce((sum, l) => sum + (l.failed || 0), 0),
+    activeShops: shops.filter((x) => x.status === "active").length,
+  };
 
   const cards = [
     ["Products tracked", stats.products],

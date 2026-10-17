@@ -72,7 +72,16 @@ export default function AdminLayout({ children }) {
           ))}
           <Link href="/" className="block mt-4 px-3 text-[12px] text-adminink-soft">← Back to site</Link>
         </aside>
-        <div className="flex-1 p-5 md:p-7 min-w-0">{children}</div>
+        <div className="flex-1 p-5 md:p-7 min-w-0">
+          {/* Phones: the sidebar is hidden, so show the admin links as a scrollable strip */}
+          <nav className="admin-nav md:hidden flex gap-2 overflow-x-auto pb-3 mb-4 whitespace-nowrap">
+            {NAV_GROUPS.flatMap((g) => g.items).map((n) => (
+              <Link key={n.href} href={n.href} className={pathname === n.href ? "active" : ""}>{n.label}</Link>
+            ))}
+            <Link href="/">← Site</Link>
+          </nav>
+          {children}
+        </div>
       </div>
     </div>
   );

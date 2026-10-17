@@ -221,7 +221,7 @@ text-[13px]">{productPriceText(product)}</span>}            {product.discount > 
       {/* Offers table */}
       <section className="mb-10">
         <h2 className="text-lg mb-3">Price across shops</h2>
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <table className="w-full text-[13.5px]">
             <thead>
               <tr className="border-b border-line text-left text-ink-soft text-[11.5px] uppercase tracking-wide">
