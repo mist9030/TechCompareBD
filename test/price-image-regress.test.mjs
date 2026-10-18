@@ -52,3 +52,44 @@ test("image helpers", () => {
   assert.equal(isUsableImage("https://x.com/image/cache/catalog/a.jpg"), true);
   assert.equal(absoluteUrl("/image/a.jpg", "https://x.com/p"), "https://x.com/image/a.jpg");
 });
+
+// ---- Star Tech: "Price: To be announced" must win even when the product block
+// cannot be located, and a stale meta price must not be used for sold-out items.
+test("'Price: To be announced' is found anywhere on the page (no usable <h1> structure)", () => {
+  const html = `<html><head><meta property="product:price:amount" content="7800"/>
+  <meta property="product:availability" content="Out Of Stock"/></head><body>
+  <div class="similar"><span class="price">7,800৳</span></div>
+  <h1>Star Tech</h1><div id="x">DeepCool PQ750M</div>
+  <div>Price: To be announced  Status: Out Of Stock  Product Code: 24424</div></body></html>`;
+  const p = startech(html, "https://www.startech.com.bd/d");
+  assert.equal(p.price, null);
+  assert.equal(p.priceText, "To be announced");
+});
+
+test("sold-out page with only a stale meta price -> no price", () => {
+  const html = `<html><head><meta property="product:price:amount" content="26900"/>
+  <meta property="product:availability" content="Out Of Stock"/></head><body>
+  <h1>GUNNIR Arc A750</h1><div>Brand: GUNNIR</div></body></html>`;
+  const p = startech(html, "https://www.startech.com.bd/g");
+  assert.equal(p.price, null);
+});
+
+test("in-stock page with only the meta price still uses it", () => {
+  const html = `<html><head><meta property="product:price:amount" content="4300"/>
+  <meta property="product:availability" content="In Stock"/></head><body><h1>Some SSD</h1></body></html>`;
+  assert.equal(startech(html, "https://www.startech.com.bd/s").price, 4300);
+});
+
+test("a numeric 'Price: 4,300' is not mistaken for a no-price label", () => {
+  const html = `<html><body><h1>Some SSD</h1><div>Price: 4,300৳  Status: In Stock</div>
+  <div>Price: To be announced</div></body></html>`;
+  const p = startech(html, "https://www.startech.com.bd/s");
+  assert.equal(p.priceText, null);
+});
+
+test("minified HTML (no whitespace between tags) still finds 'Price: To be announced'", () => {
+  const html = `<html><body><h1>DeepCool PQ750M</h1><div><span>Price:</span><b>To be announced</b></div><div>Status: Out Of Stock</div></body></html>`;
+  const p = startech(html, "https://www.startech.com.bd/m");
+  assert.equal(p.priceText, "To be announced");
+  assert.equal(p.price, null);
+});

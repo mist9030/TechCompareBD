@@ -6,7 +6,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { getProduct, getPriceHistory } from "@/lib/data";
 import { useCatalog } from "@/lib/CatalogContext";
 import { useWishlist } from "@/lib/WishlistContext";
-import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage, hasPrice, offerPriceText, productPriceText, offerUrl } from
+import { CAT_LABEL, SPEC_GROUPS, fmt, lowest, BUILD_SLOTS, getProductImage, hasPrice, offerPriceText, productPriceText, offerUrl, timeAgo } from
 "@/lib/catalog";
 import { genHistory, formatRealHistory, RANGE_DAYS } from "@/lib/history";
 import { useAuth } from "@/lib/AuthContext";
@@ -228,7 +228,7 @@ text-[13px]">{productPriceText(product)}</span>}            {product.discount > 
           <table className="w-full text-[13.5px]">
             <thead>
               <tr className="border-b border-line text-left text-ink-soft text-[11.5px] uppercase tracking-wide">
-                <th className="p-3">Shop</th><th className="p-3">Price</th><th className="p-3">Availability</th><th className="p-3">Updated</th>
+                <th className="p-3">Shop</th><th className="p-3">Price</th><th className="p-3">Availability</th><th className="p-3">Last changed</th>
               </tr>
             </thead>
             <tbody>
@@ -252,7 +252,7 @@ font-semibold">{offerPriceText(o)}</span>}
                       {o.availability === "in_stock" ? "In stock" : "Out of stock"}
                     </span>
                   </td>
-                  <td className="p-3 text-ink-soft">{o.updated}</td>
+                  <td className="p-3 text-ink-soft" title={o.lastChecked || ""}>{o.lastChecked ? timeAgo(o.lastChecked, o.updated) : o.updated}</td>
                 </tr>
               ))}
             </tbody>

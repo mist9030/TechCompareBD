@@ -7,6 +7,12 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
+  // Developer-only endpoint: it has no login check, so it must never be
+  // reachable on a deployed (production) site.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     // ------------------------------------------------------------
     // 1. Test a UCC category that currently has REAL prices

@@ -71,7 +71,10 @@ service cloud.firestore {
 
     // Builds and wishlist are private to their owner.
     match /builds/{id} {
-      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // An owner may edit a build but never hand it to another user.
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
     match /wishlist/{id} {

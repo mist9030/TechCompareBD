@@ -491,6 +491,12 @@ function upsertLocalProduct(
 export async function POST(
   request
 ) {
+  // Developer-only endpoint: it has no login check, so it must never be
+  // reachable on a deployed (production) site.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const startedAt =
     Date.now();
 

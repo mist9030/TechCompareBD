@@ -7,7 +7,7 @@
 // shop = startech | onix | ucc | skyland | creatus | globalbrand
 import fs from "node:fs";
 import * as cheerio from "cheerio";
-import { fetchHtml, productInfoScope } from "../lib/ingestion/adapters/shared.js";
+import { fetchHtml, productInfoScope, extractProductPrice } from "../lib/ingestion/adapters/shared.js";
 
 const [shop, target] = process.argv.slice(2);
 if (!shop || !target) {
@@ -18,6 +18,12 @@ if (!shop || !target) {
 const adapter = await import(`../lib/ingestion/adapters/${shop}.js`);
 const isFile = !/^https?:\/\//i.test(target);
 const html = isFile ? fs.readFileSync(target, "utf8") : await fetchHtml(target);
+if (!isFile) {
+  // Keep exactly what the scraper downloaded, so it can be inspected/shared.
+  const out = `debug-${shop}.html`;
+  fs.writeFileSync(out, html);
+  console.log(`(saved the downloaded page as ${out}, ${html.length} characters)`);
+}
 const url = isFile ? `https://example.test/${shop}` : target;
 const $ = cheerio.load(html);
 
@@ -43,6 +49,20 @@ $(".price").each((i, el) => {
 console.log("\n=== images ===");
 console.log("og:image =", $('meta[property="og:image"]').attr("content"));
 
+console.log("\n=== where the price came from ===");
+const metaRaw = $('meta[property="product:price:amount"]').attr("content");
+console.log("product:price:amount meta tag =", metaRaw ?? "(none)");
+console.log("product:availability meta tag =", $('meta[property="product:availability"]').attr("content") ?? "(none)");
+const dbg = extractProductPrice($, ".price, #product .price, .product-info .price", {
+  metaPrice: metaRaw ? Number(String(metaRaw).replace(/[^0-9.]/g, "")) || null : null,
+  availabilityText: $('meta[property="product:availability"]').attr("content") || "",
+});
+console.log(dbg);
+
 console.log("\n=== RESULT of the adapter ===");
 const r = adapter.parseProductHtml(html, url);
-console.log(r && { name: r.name, price: r.price, previousPrice: r.previousPrice, priceText: r.priceText, availability: r.availabilityText, images: r.images });
+if (!r) {
+  console.log("adapter returned NULL -> a sync would SKIP this product (no name / not a product page)");
+} else {
+  console.log({ name: r.name, price: r.price, previousPrice: r.previousPrice, priceText: r.priceText, availability: r.availabilityText, images: r.images });
+}
